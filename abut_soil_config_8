@@ -198,6 +198,7 @@ abut_geom(Profile, PropElem) :-
     compile_elements(Profile, DepthFromRatio, _, _, AbutElem),
     design_retain(AbutElem, PropElem),
     writeln('designed embankment elements!'),
+    print_solution_summary(PropElem),
     bridge_length(PropElem, BridgeLength2),
     format("Bridge length = ~1f m~n", [BridgeLength2]).
 
@@ -454,3 +455,29 @@ bridge_length(PropElem, Length) :-
         XBearing is abs((RightX + LeftX) / 2)
     ),
     Length is HO + 2 * XBearing.
+
+
+% ============================================================
+% Solution Summary
+% ============================================================
+
+% print_solution_summary(+PropElem)
+%
+% Writes a human-readable bullet list of each element: type,
+% bottom/top elevations, base width, and (for pile elements)
+% total pile count.
+
+print_solution_summary(PropElem) :-
+    writeln('Elements:'),
+    maplist(print_elem_line, PropElem).
+
+% Pile element: elem(piles, RowCounts, Spacings, none, none, none, none)
+print_elem_line(elem(piles, RowCounts, _, _, _, _, _)) :-
+    sum_list(RowCounts, Ntotal),
+    format("  - piles: ~w total~n", [Ntotal]).
+
+% All other elements: elem(Type, BotX, BotElev, TopX, TopElev, B, WallType)
+print_elem_line(elem(Type, _, BotElev, _, TopElev, B, _)) :-
+    Type \== piles,
+    format("  - ~w: elev ~1f to ~1f m, B = ~1f m~n",
+           [Type, BotElev, TopElev, B]).
