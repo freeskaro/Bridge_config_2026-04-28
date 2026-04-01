@@ -69,10 +69,10 @@ wall_design_or_piles(Above, H, B, W, SumM, E,
         PilesElem = none
 
     ;   % Footing failed — pile fallback is only valid for concrete gravity walls.
-        WallType == concrete_gravity,
+        (WallType == concrete_gravity,
         %format("~n*** Footing failed (S or Qr). Trying pile foundation. ***~n"),
         pile_fallback(Above, H, B, Below, BotElev, BearingLoad,
-                      Curr, WallType, Processed, PilesElem)
+                      Curr, WallType, Processed, PilesElem))
     ).
 
 
