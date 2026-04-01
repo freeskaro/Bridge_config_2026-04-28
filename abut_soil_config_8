@@ -392,7 +392,7 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         % If the retainment reaches the surface, append a bearing_x element:
         % a vertical stub from bearing level to surface at the base X - 0.6 m.
         Processed = elem(_, ProcBotX, _, _, _, _, _),
-        ( TopElev  >= SurfaceElev ->
+        ( TopElev  =:= SurfaceElev ->
             BxBotX    is ProcBotX - 0.6,
             BxBotElev is SurfaceElev - 1.5,
             BearXElem = elem(bearing_x, BxBotX, BxBotElev, BxBotX, SurfaceElev, 0, none),
