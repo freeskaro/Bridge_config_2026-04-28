@@ -464,20 +464,30 @@ bridge_length(PropElem, Length) :-
 % print_solution_summary(+PropElem)
 %
 % Writes a human-readable bullet list of each element: type,
-% bottom/top elevations, base width, and (for pile elements)
-% total pile count.
+% bottom/top elevations, base width (except embankment), and
+% for pile elements: piles per row and row spacing.
 
 print_solution_summary(PropElem) :-
     writeln('Elements:'),
     maplist(print_elem_line, PropElem).
 
 % Pile element: elem(piles, RowCounts, Spacings, none, none, none, none)
-print_elem_line(elem(piles, RowCounts, _, _, _, _, _)) :-
-    sum_list(RowCounts, Ntotal),
-    format("  - piles: ~w total~n", [Ntotal]).
+print_elem_line(elem(piles, RowCounts, Spacings, _, _, _, _)) :-
+    format("  - piles:~n"),
+    print_pile_rows(1, RowCounts, Spacings).
+
+print_pile_rows(_, [], _).
+print_pile_rows(I, [N|Ns], [X|Xs]) :-
+    format("      row ~w: ~w piles at ~1f m~n", [I, N, X]),
+    I1 is I + 1,
+    print_pile_rows(I1, Ns, Xs).
+
+% Embankment: no B
+print_elem_line(elem(embankment, _, BotElev, _, TopElev, _, _)) :-
+    format("  - embankment: elev ~1f to ~1f m~n", [BotElev, TopElev]).
 
 % All other elements: elem(Type, BotX, BotElev, TopX, TopElev, B, WallType)
 print_elem_line(elem(Type, _, BotElev, _, TopElev, B, _)) :-
-    Type \== piles,
+    Type \== piles, Type \== embankment,
     format("  - ~w: elev ~1f to ~1f m, B = ~1f m~n",
            [Type, BotElev, TopElev, B]).
