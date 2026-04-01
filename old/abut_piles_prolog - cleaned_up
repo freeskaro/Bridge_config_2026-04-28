@@ -1,0 +1,123 @@
+% Pile Configuration Finder
+% Optimized version
+
+%==============================================================
+% PROJECT FACTS
+%==============================================================
+pcf(25400). mcf(31877). vcf(9953).
+incl(3.5). pmax(1300). hlat(125). b(6).
+
+%==============================================================
+% ALGORITHM PARAMETERS
+%==============================================================
+n1_range([4,6,8,10,12,14]).
+n2_range([4,6,8,10,12]).
+n3_range([4,6,8,10,12]).
+dias([0.3,0.4,0.5,0.6]).
+x1min(0.450).
+
+%==============================================================
+% GEOMETRY HELPERS
+%==============================================================
+
+dia(Dia) :- dias(Dias), member(Dia, Dias).
+
+dx(Dia, Dx) :- member(M, [3,4,5,6]), Dx is M * Dia.
+
+x1(X1) :-
+    x1min(Xmin),
+    (X1 is Xmin ; X1 is Xmin + 0.45).
+
+x2(X1, Dx, X2) :- X2 is X1 + Dx.
+
+x3(X2, Dia, X3) :-
+    x1min(X),
+    b(B),
+    member(Off, [0.0, 0.5]),
+    X3 is B - X - Off,
+    X3 - X2 > 3 * Dia.
+
+%==============================================================
+% PILE SPACING: generates valid (X1, X2, X3, Dia) combos
+%==============================================================
+
+pile_spacing(X1, X2, X3, Dia) :-
+    dia(Dia),
+    dx(Dia, Dx),
+    x1(X1),
+    x2(X1, Dx, X2),
+    x3(X2, Dia, X3).
+
+%==============================================================
+% PILE NUMBERS: N1 >= N2 enforced early
+%==============================================================
+
+pile_numbers(N1, N2, N3) :-
+    n1_range(NN1), member(N1, NN1),
+    n2_range(NN2), member(N2, NN2),
+    N1 >= N2,                          % pruned early
+    n3_range(NN3), member(N3, NN3).
+
+%==============================================================
+% CENTROID & MOMENT ARMS (computed once per config)
+%==============================================================
+
+centroid(X1, X2, X3, N1, N2, N3, Xc, R1, R2, R3, SumR2) :-
+    b(B),
+    Nt is N1 + N2 + N3,
+    Xc is (N1*X1 + N2*X2 + N3*X3) / Nt,
+    Half is B / 2,
+    De is Half - Xc,
+    R1 is Half - X1 - De,
+    R2 is Half - X2 - De,
+    R3 is Half - X3 - De,
+    SumR2 is N1*R1**2 + N2*R2**2 + N3*R3**2.
+
+%==============================================================
+% LOAD CHECKS (all constraints applied as early as possible)
+%==============================================================
+
+check_config(X1, X2, X3, N1, N2, N3, P1, P3, Hi, Nt) :-
+    pile_spacing(X1, X2, X3, Dia), Dia = Dia,  % bind spacing
+    pile_numbers(N1, N2, N3),
+    centroid(X1, X2, X3, N1, N2, N3, Xc, R1, R2, R3, SumR2),
+
+    % Load constants
+    pcf(Pcf), mcf(Mcf), vcf(Vcf), incl(Incl),
+    b(B),
+
+    Nt is N1 + N2 + N3,
+    De is B/2 - Xc,
+    Mc is Mcf - Pcf * De,
+
+    % Pile loads
+    P1 is Pcf/Nt + Mc*R1/SumR2,
+    P2 is Pcf/Nt + Mc*R2/SumR2,
+    P3 is Pcf/Nt + Mc*R3/SumR2,
+
+    % Capacity checks — fail fast
+    pmax(Pmax), P1 < Pmax,
+    P3 > -100,
+
+    % Lateral load check
+    Ht is (P1*N1 + P2*N2) / Incl,
+    Hi is (Vcf - Ht) / Nt,
+    hlat(Hlat), Hi < Hlat.
+
+%==============================================================
+% BEST CONFIG: minimise total piles, then minimise P1
+%==============================================================
+
+best_config(X1, X2, X3, N1, N2, N3, P1, P3, Hi, MinNt) :-
+    % Step 1: find minimum Nt over all valid configs
+    aggregate_all(min(Nt), check_config(_,_,_,_,_,_,_,_,_,Nt), MinNt),
+
+    % Step 2: among those, find minimum P1
+    aggregate_all(min(P1v),
+        check_config(_,_,_,_,_,_,P1v,_,_,MinNt),
+        MinP1),
+
+    % Step 3: retrieve the matching solution
+    check_config(X1, X2, X3, N1, N2, N3, P1, P3, Hi, MinNt),
+    P1 =:= MinP1,
+    !.

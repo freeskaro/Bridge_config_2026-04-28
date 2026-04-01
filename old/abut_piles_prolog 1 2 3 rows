@@ -1,0 +1,174 @@
+% Pile Configuration Finder
+% Supports 1, 2, or 3 rows of piles
+
+%==============================================================
+% PROJECT FACTS
+%==============================================================
+pcf(5400).
+mcf(0).
+vcf(300).
+incl(3.5).
+pmax(1300).
+hlat(125).
+b(2).
+mc_threshold(50).
+
+%==============================================================
+% PILE COUNTS (candidates per row)
+%==============================================================
+n1_range([4,6,8,10,12,14]).
+n2_range([4,6,8,10,12]).
+n3_range([4,6,8,10,12]).
+
+%==============================================================
+% PILE DIAMETERS
+%==============================================================
+dias([0.3,0.4,0.5,0.6]).
+dia(Dia) :- dias(Dias), member(Dia, Dias).
+
+%==============================================================
+% PILE POSITIONS
+% x1min = minimum cover distance from wall face
+%==============================================================
+x1min(0.450).
+
+candidate_x1(X1) :-
+    x1min(Xmin), b(B), Mid is B/2,
+    member(X1, [Xmin, Mid]).              % front cover or centroid
+
+candidate_dx(Dia, Dx) :-
+    member(M, [3,4,5,6]), Dx is M*Dia.   % pile-to-pile spacing multiplier
+
+valid_x3(X2, Dia, X3) :-
+    x1min(X), b(B),
+    member(Off, [0.0, 0.5]),
+    X3 is B - X - Off,
+    X3 - X2 > 3*Dia.                     % minimum clear spacing to row 2
+
+%==============================================================
+% PILE SPACING — one clause per row count
+%==============================================================
+
+% 1 row: single row placed at mid-width (centroid)
+pile_spacing(1, X1, none, none, _) :-
+    b(B), X1 is B/2.
+
+% 2 rows: front row + one interior row
+pile_spacing(2, X1, X2, none, Dia) :-
+    dia(Dia),
+    candidate_dx(Dia, Dx),
+    candidate_x1(X1),
+    X2 is X1 + Dx.
+
+% 3 rows: front + middle + back row
+pile_spacing(3, X1, X2, X3, Dia) :-
+    dia(Dia),
+    candidate_dx(Dia, Dx),
+    candidate_x1(X1),
+    X2 is X1 + Dx,
+    valid_x3(X2, Dia, X3).
+
+%==============================================================
+% PILE NUMBERS + INCLINED COUNT — one clause per row count
+%
+%   1 row : Ni1 = N1//2  (up to half inclined)
+%   2 rows: Ni1 = N1, Ni2 = 0   (row 1 all inclined, row 2 vertical)
+%   3 rows: Ni1 = N1, Ni2 = N2  (rows 1+2 all inclined)
+%   Constraint: N1 >= N2 always
+%==============================================================
+
+pile_numbers(1, N1, 0,  0,  Ni1, 0) :-
+    n1_range(NN1), member(N1, NN1),
+    Ni1 is N1 // 2.
+
+pile_numbers(2, N1, N2, 0,  N1,  0) :-
+    n1_range(NN1), member(N1, NN1),
+    n2_range(NN2), member(N2, NN2),
+    N1 >= N2.
+
+pile_numbers(3, N1, N2, N3, N1, N2) :-
+    n1_range(NN1), member(N1, NN1),
+    n2_range(NN2), member(N2, NN2), N1 >= N2,
+    n3_range(NN3), member(N3, NN3).
+
+%==============================================================
+% CENTROID & MOMENT ARMS
+% Absent rows have N=0, so their X contributes nothing to sums.
+%==============================================================
+
+centroid(X1, X2, X3, N1, N2, N3, Xc, R1, R2, R3, SumR2) :-
+    b(B),
+    Nt is N1 + N2 + N3, Nt > 0,
+    Xc   is (N1*X1 + N2*X2 + N3*X3) / Nt,
+    Half is B / 2,
+    De   is Half - Xc,
+    R1   is Half - X1 - De,   % moment arm: row 1
+    R2   is Half - X2 - De,   % moment arm: row 2
+    R3   is Half - X3 - De,   % moment arm: row 3
+    SumR2 is N1*R1**2 + N2*R2**2 + N3*R3**2.
+
+%==============================================================
+% PILE LOADS
+% Centroid case (1 row, small Mc): pure axial, no moment term.
+% General case: axial + moment distribution.
+%==============================================================
+
+pile_loads(centroid, Pcf, _,  _,     _,  _,  _,  Nt, P, P, P) :-
+    P is Pcf / Nt.
+
+pile_loads(eccentric, Pcf, Mc, SumR2, R1, R2, R3, Nt, P1, P2, P3) :-
+    P1 is Pcf/Nt + Mc*R1/SumR2,
+    P2 is Pcf/Nt + Mc*R2/SumR2,
+    P3 is Pcf/Nt + Mc*R3/SumR2.
+
+load_case(1, Mc, SumR2, centroid)  :-
+    mc_threshold(T), abs(Mc) < T, SumR2 =:= 0.0, !.
+load_case(_, _,  _,     eccentric).
+
+%==============================================================
+% SINGLE CONFIGURATION CHECK
+%==============================================================
+
+check_config(Rows, X1, X2, X3, N1, N2, N3, P1, P3, Hi, Nt) :-
+
+    % --- geometry ---
+    pile_spacing(Rows, X1, X2raw, X3raw, _Dia),
+    (X2raw = none -> X2 = 0.0 ; X2 = X2raw),
+    (X3raw = none -> X3 = 0.0 ; X3 = X3raw),
+
+    % --- pile counts ---
+    pile_numbers(Rows, N1, N2, N3, Ni1, Ni2),
+
+    % --- centroid & arms ---
+    centroid(X1, X2, X3, N1, N2, N3, Xc, R1, R2, R3, SumR2),
+
+    % --- applied loads ---
+    pcf(Pcf), mcf(Mcf), vcf(Vcf), incl(Incl), b(B),
+    Nt is N1 + N2 + N3,
+    De is B/2 - Xc,
+    Mc is Mcf - Pcf*De,
+
+    % --- pile load formula selection ---
+    load_case(Rows, Mc, SumR2, Case),
+    (Case = eccentric -> SumR2 > 0 ; true),
+    pile_loads(Case, Pcf, Mc, SumR2, R1, R2, R3, Nt, P1, P2, P3),
+
+    % --- capacity checks (fail fast) ---
+    pmax(Pmax), P1 < Pmax,
+    P3 > -100,
+
+    % --- lateral check ---
+    Ht is (P1*Ni1 + P2*Ni2) / Incl,
+    Hi is (Vcf - Ht) / Nt,
+    hlat(Hlat), Hi < Hlat.
+
+%==============================================================
+% BEST CONFIG: minimise total piles (Nt), then minimise P1
+%==============================================================
+
+best_config(Rows, X1, X2, X3, N1, N2, N3, P1, P3, Hi, MinNt) :-
+    aggregate_all(min(Nt),  check_config(_,_,_,_,_,_,_,_,_,_,Nt),    MinNt),
+    aggregate_all(min(P1v), check_config(_,_,_,_,_,_,_,P1v,_,_,MinNt), MinP1),
+    check_config(Rows, X1, X2, X3, N1, N2, N3, P1, P3, Hi, MinNt),
+    P1 =:= MinP1,
+    !.

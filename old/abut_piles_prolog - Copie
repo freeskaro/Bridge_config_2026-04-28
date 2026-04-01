@@ -1,0 +1,102 @@
+%This code finds pile confiuration
+%
+%['C:/Users/rerfani/Documents/prolog/abut_piles_prolog']
+%
+%project facts
+pcf(25400).
+mcf(31877).
+vcf(9953).
+incl(3.5).
+pmax(1300).
+hlat(125).
+b(6).
+%trial_pile_spacing(6,0.9,2.65,5.25,0.5).
+%trial_pile_number(6,12,8,7).
+%acceptable_config(0.9,2.65,5.25,12,8,7,P1,P3,Hi)
+%algo facts
+
+n1([4,6,8,10,12,14]).
+n2([4,6,8,10,12]).
+n3([4,6,8,10,12]).
+dias([0.3,0.4,0.5,0.6]).
+
+x1min(0.450).
+x1(X1):-
+    x1min(Xmin), 
+    (X1 is Xmin ; X1 is Xmin+0.45). %rebar from first row of piles can conflict with front wall rebar if X1 is too large 
+
+x2(X1,Dx,X2):-X2 is X1 + Dx. 
+
+x3(X3,X2,B,Dia):-
+    x1min(X), 
+    (X3 is B-X ; X3 is B-X-0.5), 
+    X3-X2 > 3*Dia.
+
+diai(Dia):-
+    dias(Dias),
+    member(Dia,Dias).
+
+dx(Dia,Dx):-
+    member(M,[3,4,5,6]),
+    Dx is M*Dia.
+
+%Goal
+best_config(X1,X2,X3,N1,N2,N3,P1,P3,Hi,MinNt):-
+    findall(Nt0, acceptable_config(_,_,_,_,_,_,_,_,_,Nt0), AllNts),
+    min_list(AllNts, MinNt),
+    findall(P10, acceptable_config(_,_,_,_,_,_,P10,_,_,MinNt), P1s),
+    min_list(P1s, MinP1),
+    acceptable_config(X1,X2,X3,N1,N2,N3,P1,P3,Hi,MinNt),
+    P1 =:= MinP1.
+%sub goal
+
+%optimumu_lat(X1,X2,X3,N1,N2,N3,P1,P3,Hi):-findall()
+acceptable_config(X1,X2,X3,N1,N2,N3,P1,P3,Hi,Nt):-
+    trial_pile_spacing(B,X1,X2,X3,Dia),
+    trial_pile_number(B,N1,N2,N3),
+    centroid(X1,X2,X3,N1,N2,N3,Xc,XX2,R1,R2,R3,RR2),
+    pcf(Pcf),
+    mcf(Mcf),
+    vcf(Vcf),
+    incl(Incl),
+    De is B/2 - Xc, 
+    Pc is Pcf, 
+    Mc is (Mcf - Pcf*De), 
+    Vc is Vcf, 
+    Nt is N1+N2+N3, 
+    P1 is Pc/Nt + Mc*R1/RR2, 
+    P2 is Pc/Nt + Mc*R2/RR2, 
+    P3 is Pc/Nt + Mc*R3/RR2,
+    Ht is (P1*N1+P2*N2)/Incl, 
+    Hi is (Vc-Ht)/Nt,
+    pmax(Pmax), 
+    P1 < Pmax, 
+    P3 > -100, 
+    hlat(Hlat), 
+    Hi < Hlat. 
+
+trial_pile_spacing(B,X1,X2,X3,Dia):-
+    b(B),
+    diai(Dia),
+    dx(Dia,Dx),
+    x1(X1),
+    x2(X1,Dx,X2),
+    x3(X3,X2,B,Dia).
+
+trial_pile_number(B,N1,N2,N3):-
+    n3(NN3),
+    member(N3,NN3),
+    n2(NN2),
+    member(N2,NN2),
+    n1(NN1),
+    member(N1,NN1),
+    N1>=N2.
+
+centroid(X1,X2,X3,N1,N2,N3,Xc,XX2,R1,R2,R3,RR2):-
+    b(B), 
+    Xc is (N1*X1+N2*X2+N3*X3)/(N1+N2+N3),
+    De is B/2-Xc,
+    R1 is B/2-X1-De,
+    R2 is B/2-X2-De,
+    R3 is B/2-X3-De,
+    RR2 is N1*R1**2+N2*R2**2+N3*R3**2. 

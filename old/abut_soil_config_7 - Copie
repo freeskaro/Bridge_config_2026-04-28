@@ -1,0 +1,299 @@
+% abut_soil_config_4AI.pl
+%['C:/Users/rerfani/Documents/Prolog/abutment config 2023-03-02 - Claude/abut_soil_config_5'].
+% Abutment soil configuration module.
+% Builds a geometric profile from soil strata and sizes retaining elements.
+%
+% Soil facts format: soil(Type, Density, TopElev)
+%
+% TODO:
+%   - Modularize further
+%   - Check bearing capacity
+%   - Enforce no slope below retained layer
+
+:- use_module(library(lists), [reverse/2]).
+:- use_module('abut_tree_gravity', [design_wall/10, equilibrium/4]).
+:- consult('abut_config_facts').
+
+
+% ============================================================
+% Soil Data
+% ============================================================
+
+soil(gravel, loose,  100).
+soil(gravel, loose,  98.5).
+soil(gravel, loose,   97).
+soil(gravel, medium,   95.5).
+soil(gravel, dense,   93).
+soil(rock, sound, 90).
+
+
+surface(100).
+bottom(93).         % bottom elevation of obstacle
+frost_depth(2).
+hydraulic_opening(15).  %assumed as natural bank width
+design_high_water_level(98.5).
+
+% Retaining wall types and their required frost protection depths.
+retaining_wall_type(concrete_gravity).
+retaining_wall_type(mse_wall).
+retaining_wall_type(timber_crib).
+retaining_wall_type(gabion_block).
+
+% Wall types permitted when retainment reaches the surface.
+wall_type_at_surface(concrete_gravity).
+wall_type_at_surface(timber_crib).
+
+frost_depth_for_wall(concrete_gravity, Df) :- frost_depth(Df).
+frost_depth_for_wall(mse_wall,         0.4).
+frost_depth_for_wall(timber_crib,      0.4).
+frost_depth_for_wall(gabion_block,     0.4).
+
+% Allowable settlement (mm) per wall type.
+allowable_settlement_for_wall(concrete_gravity, 25).
+allowable_settlement_for_wall(mse_wall,         50).
+allowable_settlement_for_wall(timber_crib,      50).
+allowable_settlement_for_wall(gabion_block,     50).
+
+% ============================================================
+% Helpers
+% ============================================================
+
+% strip_keys(+Pairs, -Values)
+% Remove keys from a keysorted list of Key-Value pairs.
+strip_keys([], []).
+strip_keys([_-V | T], [V | TT]) :-
+    strip_keys(T, TT).
+
+% build_list(-SortedLayers)
+% Collect soil/3 facts with Elev > bottom elevation, sort ascending (bottom to top).
+% All layers in the result have height > 0 relative to BottomElev.
+build_list(L) :-
+    bottom(BottomElev),
+    findall(Elev-soil(Type, Density, Elev),
+            (soil(Type, Density, Elev), Elev > BottomElev),
+            Pairs),
+    keysort(Pairs, Sorted),
+    strip_keys(Sorted, L).
+
+
+% ============================================================
+% Main Entry Point
+% ============================================================
+
+% abut_geom(-Profile, -PropElem)
+%
+% Steps:
+%   1. Compile soil strata into a sorted layer list.
+%   2. Derive geometric configuration per layer (vertical / slope / confined).
+%   3. Compile structural elements from the profile.
+%   4. Size / proportion structural elements.
+%
+abut_geom(Profile, PropElem) :-
+    build_list(L),
+    bottom(BottomElev),
+    iter_depth(L, BottomElev, 0, none, [[0, BottomElev, bottom]], Profile, _Pcon, _Pslp),
+    compile_elements(Profile, _, _, AbutElem),
+    design_retain(AbutElem, PropElem),
+    writeln('designed embankment elements!'),
+    bridge_length(PropElem, BridgeLength),
+    format("Bridge length = ~1f m~n", [BridgeLength]).
+
+
+% ============================================================
+% Layer Configuration (bottom to top)
+% ============================================================
+
+% iter_depth(+Layers, +CurrElev, +CurrX, +PrevAType, +Accum, -Profile, -Pcon, -Pslp)
+%
+% Base case: all layers processed -- append the surface point.
+% If the top two layers are both slope, also append a bearing point at survey X + 3.
+% If the top layer is slope and the second is confined/vertical, append a bearing point at survey X + 1.5.
+iter_depth([], _, CurrX, _, Accum, Profile, _Pcon, _Pslp) :-
+    surface(SurfaceElev),
+    ( Accum = [[_, _, slope], [_, _, slope] | _] ->
+        BearingX is CurrX + 3,
+        Profile = [[CurrX, SurfaceElev, surface], [BearingX, SurfaceElev, bearing] | Accum]
+    ; Accum = [[_, _, slope], [_, _, AType2] | _], memberchk(AType2, [confined, vertical]) ->
+        BearingX is CurrX + 1.5,
+        Profile = [[CurrX, SurfaceElev, surface], [BearingX, SurfaceElev, bearing] | Accum]
+    ;
+        Profile = [[CurrX, SurfaceElev, surface] | Accum]
+    ).
+
+% Recursive case: process one layer and advance.
+iter_depth([soil(Type, _, Elev) | Tail], CurrElev, CurrX, PrevAType, Accum,
+           Profile, Pcon, Pslp) :-
+    Height is Elev - CurrElev,
+    layer_config(Type, Height, CurrX, NewX, PrevAType, AType, Pcon, Pslp),
+    NewAccum = [[NewX, Elev, AType] | Accum],
+    iter_depth(Tail, Elev, NewX, AType, NewAccum, Profile, Pcon, Pslp).
+
+
+% layer_config(+Type, +Height, +X1, -X2, +PrevAType, -AType, ?Pcon, ?Pslp)
+%
+% Rock is always vertical; X does not change.
+layer_config(rock, _, X, X, _, vertical, _, _).
+
+% Gravel: configuration depends on prior history flags (Pcon / Pslp).
+layer_config(gravel, Height, X1, X2, PrevAType, AType, Pcon, Pslp) :-
+    (   Pcon == true, PrevAType == confined ->
+            ( AType = slope,    X2 is X1 - 2*Height
+            ; AType = confined, X2 is X1 )
+
+    ;   Pcon == true, PrevAType == slope ->
+            ( AType = slope, X2 is X1 - 2*Height )
+
+    ;   Pslp == true, PrevAType == slope ->
+            ( AType = slope,    X2 is X1 - 2*Height
+            ; AType = confined, X2 is X1 )
+
+    ;   Pslp == true, PrevAType == confined ->
+            ( AType = confined, X2 is X1 )
+
+    ;   % No prior history -- choose slope or confined and set the flag.
+        ( AType = slope,    X2 is X1 - 2*Height, Pslp = true
+        ; AType = confined, X2 is X1,             Pcon = true )
+    ).
+
+
+% ============================================================
+% Structural Element Compilation
+% ============================================================
+%
+% Element format: elem(Type, Bot_X, Bot_Elev, Top_X, Top_Elev, B, WallType)
+%   B        = base width (m)
+%   WallType = retaining wall type (concrete_gravity|mse_wall|timber_crib|gabion_block)
+%              set to 'none' for non-retainment elements during compilation;
+%              assigned by design_retain_aux for retainment elements.
+%
+% compile_elements(+Profile, +PrevAType, +ElemAcc, -AbutElem)
+
+% Surface node -- restart accumulator.
+compile_elements([[_, _, surface] | ProfT], _, _, AbutElem) :-
+    compile_elements(ProfT, _, [], AbutElem).
+
+% Bearing node -- create a stub_abutment element centred at BearingX.
+% 600 mm wide, top 1.5 m below surface, height = frost_depth / cos(atan(0.5)).
+compile_elements([[BearingX, SurfaceElev, bearing] | ProfT], _, ElemAcc, AbutElem) :-
+    frost_depth(Df),
+    TopElev  is SurfaceElev - 1.5,
+    Height   is Df / cos(atan(0.5)),
+    BotElev  is TopElev - Height,
+    RightX   is BearingX + 0.6,
+    LeftX    is BearingX - 0.6,
+    StubElem = elem(stub_abutment, RightX, BotElev, LeftX, TopElev, 0.6, none),
+    compile_elements(ProfT, _, ElemAcc, RestElem),
+    append(RestElem, [StubElem], AbutElem).
+
+% Bottom node -- finalise lowest element's bottom coordinates and compute B.
+compile_elements([[BotX, BotElev, bottom]], _, ElemAcc, AbutElem) :-
+    ( ElemAcc = [elem(E, _, _, TopX, TopElev, _, _) | Rest] ->
+        ( E == embankment -> B is abs(TopX - BotX) ; B = 1.5 ),
+        AbutElem = [elem(E, BotX, BotElev, TopX, TopElev, B, none) | Rest]
+    ;   AbutElem = ElemAcc
+    ).
+
+% Interior node: open first element, extend same type, or transition to new type.
+compile_elements([[X, Y, AType] | ProfT], PrevAType, ElemAcc, AbutElem) :-
+    ( ElemAcc = [] ->
+        elem_type(AType, Elem),
+        NewAcc = [elem(Elem, bot_x, _, X, Y, _, none)]
+    ; PrevAType == AType ->
+        ElemAcc = [elem(E, _, _, TopX, TopY, _, _) | ET],
+        NewAcc  = [elem(E, X, Y, TopX, TopY, _, none) | ET]
+    ;
+        ElemAcc = [elem(EO, _, _, TopX, TopY, _, _) | ET],
+        ( EO == embankment -> BEO is abs(TopX - X) ; BEO = 1.5 ),
+        elem_type(AType, NewElem),
+        NewAcc  = [elem(NewElem, bot_x, _, X, Y, _, none), elem(EO, X, Y, TopX, TopY, BEO, none) | ET]
+    ),
+    compile_elements(ProfT, AType, NewAcc, AbutElem).
+
+
+% ============================================================
+% Retaining Wall Sizing
+% ============================================================
+
+% design_retain(+AbutElem, -PropElem)
+design_retain(AbutElem, PropElem) :-
+    design_retain_aux(AbutElem, [], RevPropElem),
+    reverse(RevPropElem, PropElem).
+
+design_retain_aux([], Acc, Acc).
+
+design_retain_aux([Head | Tail], Acc, Result) :-
+    Head = elem(Elem, BotX, BotElev, TopX, TopElev, _, _),
+    ( Acc == []         -> Below = bottom
+    ; Acc = [Prev | _],  Prev = elem(Below, _, _, _, _, _, _)
+    ),
+    ( Elem == retainment ->
+        ( Tail == []          -> Above = none
+        ; Tail = [Next | _],   Above = Next
+        ),
+        % Wall type: concrete gravity only if retainment reaches surface;
+        % otherwise any retaining wall type is valid.
+        surface(SurfaceElev),
+        ( TopElev =:= SurfaceElev ->
+            wall_type_at_surface(WallType)
+        ;
+            retaining_wall_type(WallType)
+        ),
+        frost_depth_for_wall(WallType, Df),
+        bottom(BottomElev),
+        Theta is atan(0.5),
+        ( BotElev > BottomElev ->                       %if gravity wall is above river bed
+            AdjBotX    is BotX   - Df * sin(Theta),     %plateau "a" for minimum d
+            AdjBotElev is BotElev - Df * cos(Theta)     %depth "d" for minimum frost protection
+        ;
+            AdjBotX    = BotX,                          %if gravity wall is below riverbed
+            AdjBotElev is BotElev - Df
+        ),
+        AdjHead = elem(Elem, AdjBotX, AdjBotElev, TopX, TopElev, _, WallType),
+        allowable_settlement_for_wall(WallType, AllowS),
+        wall_design(Above, _H, _B, _W, _SumM, _E, AdjHead, Below, AllowS, Processed),
+        % If the retainment reaches the surface, append a bearing_x element:
+        % a vertical stub from bearing level to surface at the base X - 0.6 m.
+        Processed = elem(_, ProcBotX, _, _, _, _, _),
+        ( TopElev =:= SurfaceElev ->
+            BxBotX    is ProcBotX - 0.6,
+            BxBotElev is SurfaceElev - 1.5,
+            BearXElem = elem(bearing_x, BxBotX, BxBotElev, BxBotX, SurfaceElev, 0, none),
+            NewAcc = [BearXElem, Processed | Acc]
+        ;
+            NewAcc = [Processed | Acc]
+        ),
+        design_retain_aux(Tail, NewAcc, Result)
+    ;
+        design_retain_aux(Tail, [Head | Acc], Result)
+    ).
+
+
+% wall_design(+Above, -H, -B, -W, -SumM, -E, +Curr, +Below, +AllowS, -Processed)
+wall_design(Above, H, B, W, SumM, E, Curr, Below, AllowS, Processed) :-
+    Curr = elem(Elem, BotX, BotElev, X, Y, _, WallType),
+    ( Above = elem(ElemAbove, _, _, _, _, _, _) -> Elem1 = ElemAbove ; Elem1 = flat ),
+    H is Y - BotElev,
+    design_wall(Elem1, Below, Y, BotElev, H, B, W, SumM, E, AllowS),
+    X2 is BotX - 1.5,                                      %continue slope 1.5 m back from face
+    Processed = elem(Elem, BotX, BotElev, X2, Y, B, WallType).
+
+
+% ============================================================
+% Bridge Length
+% ============================================================
+
+% bridge_length(+PropElem, -Length)
+%
+% Total bridge length = hydraulic opening + 2 * XBearing, where:
+%   XBearing = abs(BotX)              for a bearing_x element
+%   XBearing = abs((RightX+LeftX)/2)  for a stub_abutment element
+%
+% BotX = 0 is taken as the centreline reference.
+bridge_length(PropElem, Length) :-
+    hydraulic_opening(HO),
+    ( member(elem(bearing_x, BotX, _, _, _, _, _), PropElem) ->
+        XBearing is abs(BotX)
+    ; member(elem(stub_abutment, RightX, _, LeftX, _, _, _), PropElem) ->
+        XBearing is abs((RightX + LeftX) / 2)
+    ),
+    Length is HO + 2 * XBearing.

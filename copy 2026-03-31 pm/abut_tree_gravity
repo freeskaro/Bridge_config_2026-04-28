@@ -1,0 +1,238 @@
+% abut_tree_gravity.pl
+%
+% Gravity retaining wall design module.
+% Based on Craig's Soil Mechanics s.6.6, equations 6.16 and 6.17.
+% Assumes vertical wall (alpha = 90°), c = 0.
+%
+% Public interface: design_wall/9
+
+:- module(abut_tree_gravity, [design_wall/11, equilibrium/4]).
+:- use_module('CFEM_4th_prolog_qu').
+:- use_module('Abut_tree_footing_def').
+
+
+% ============================================================
+% Design Parameters
+% ============================================================
+
+soil_gamma(18).             % kN/m³  — retained soil unit weight
+wall_gamma(24).             % kN/m³  — concrete unit weight
+fs_overturning_min(2.0).    % minimum FS against overturning
+fs_sliding_min(1.5).        % minimum FS against sliding
+
+
+% ============================================================
+% Helpers
+% ============================================================
+
+% deg2rad(+Deg, -Rad)
+deg2rad(Deg, Rad) :-
+    Rad is Deg * pi / 180.
+
+% equilibrium(+Forces, +[Xo,Yo], +AccIn, -React)
+%
+% Sums all applied forces and their moments about reference point [Xo,Yo].
+% Each force: force(Fx, Fy, X, Y) — components Fx,Fy acting at point [X,Y].
+% AccIn = [Rx, Ry, M] — running totals, initialised to [0, 0, 0].
+% React = [SumFx, SumFy, SumM] — resultant force and moment.
+%equilibrium(force(10, 0, M, -2, 1), [0, 0], [Rx, Ry, M], React)
+
+% Base case: list exhausted, return accumulated totals.
+equilibrium([], [_Xo, _Yo], React, React).
+
+% Recursive case: accumulate one force.
+equilibrium([force(Fx, Fy, M, X, Y) | Rest], [Xo, Yo], [Rx, Ry, Mo], React) :-
+    Rx2 is Rx - Fx,
+    Ry2 is Ry - Fy,
+    M2  is Mo  + (X-Xo) * Fy + (Y-Yo) * Fx - M,
+    equilibrium(Rest, [Xo, Yo], [Rx2, Ry2, M2], React).
+
+
+% ============================================================
+% Soil Lookup
+% ============================================================
+
+% soil_at_or_above(+BotElev, -Type, -Des)
+% Find the soil stratum whose elevation is closest at or above BotElev.
+soil_at_or_above(BotElev, Type, Des) :-
+    findall(Elev, (soil(_, _, Elev), Elev >= BotElev), Elevs),
+    min_list(Elevs, ClosestElev),
+    soil(Type, Des, ClosestElev).
+
+
+% depth_to_rock(+FromElev, -Hr)
+depth_to_rock(FromElev, Hr) :-
+    findall(Elev, soil(rock, _, Elev), RockElevs),
+    ( RockElevs = [] ->
+        Hr is 999          % no rock found — effectively infinite
+    ;
+        max_list(RockElevs, RockTop),
+        Hr is FromElev - RockTop
+    ).
+
+% ============================================================
+% Earth Pressure
+% ============================================================
+
+% ka(+AlphaDeg, +BetaDeg, +PhiDeg, +DeltaDeg, -Ka)
+% Coulomb active earth pressure coefficient.
+ka(AlphaDeg, BetaDeg, PhiDeg, DeltaDeg, Ka) :-
+    deg2rad(AlphaDeg, Alpha),
+    deg2rad(BetaDeg,  Beta),
+    deg2rad(PhiDeg,   Phi),
+    deg2rad(DeltaDeg, Delta),
+    Sin_Alpha          is sin(Alpha),
+    Sin_AlphaMinusPhi  is sin(Alpha - Phi),
+    Sin_AlphaPlusDelta is sin(Alpha + Delta),
+    Sin_PhiPlusDelta   is sin(Phi   + Delta),
+    Sin_PhiMinusBeta   is sin(Phi   - Beta),
+    Sin_AlphaMinusBeta is sin(Alpha - Beta),
+    Term1 is Sin_AlphaMinusPhi / Sin_Alpha,
+    Inner is (Sin_PhiPlusDelta * Sin_PhiMinusBeta) / Sin_AlphaMinusBeta,
+    Denom is sqrt(Sin_AlphaPlusDelta) + sqrt(Inner),
+    Ka    is (Term1 / Denom)^2.
+
+% pa_components(+H, +Ka, +DeltaDeg, -PaH, -PaV)
+% Horizontal and vertical components of the total active thrust.
+pa_components(H, Ka, DeltaDeg, PaH, PaV) :-
+    soil_gamma(Gamma),
+    Pa is 0.5 * Ka * Gamma * H^2,
+    deg2rad(DeltaDeg, DeltaR),
+    PaH is Pa * cos(DeltaR),
+    PaV is Pa * sin(DeltaR).
+
+% force_moment(+Force, +[Xo,Yo], -Moment)
+% Resolve a single force into its moment about a reference point.
+force_moment(force(Fx, Fy, M, X, Y), [Xo, Yo], Moment) :-
+    Moment is + (X - Xo) * Fy + (Y - Yo) * Fx - M.
+
+% wall_force_list(+H, +B, +PaH, +PaV, -Forces)
+% Assemble the weight and active thrust forces acting on the wall.
+wall_force_list(H, B, PaH, PaV, [WeightForce, ThrustForce]) :-
+    wall_gamma(GammaC),
+    W is B * H * GammaC+abs(PaV),
+    WeightForce = force(0, -W, 0, -B / 2, H / 2),
+    ThrustForce = force(PaH,0 , 0, -B, H / 3).
+
+% wall_resultant(+H, +B, +PaH, +PaV, -[Rx, Ry, RM])
+% Resolve the resultant force components and moment from the applied forces.
+wall_resultant(H, B, PaH, PaV, [Rx, Ry, RM]) :-
+    wall_force_list(H, B, PaH, PaV, Forces),
+    equilibrium(Forces, [0, 0], [0, 0, 0], [Rx, Ry, RM]).
+
+% ============================================================
+% Stability Checks
+% ============================================================
+
+% fs_overturning(+H, +B, +PaH, -FS)
+fs_overturning(H, B, PaH, FS) :-
+    wall_force_list(H, B, PaH, 0, [WeightForce, ThrustForce]),
+    force_moment(WeightForce, [0, 0], Mw),
+    force_moment(ThrustForce, [0, 0], Mp),
+    Mr is abs(Mw),
+    Mo is abs(Mp),
+    FS is Mr / Mo.
+
+% fs_sliding(+H, +B, +BotElev, +PaH, +PaV, -FS)
+fs_sliding(H, B, BotElev, PaH, PaV, FS) :-
+    wall_resultant(H, B, PaH, PaV, [_Rx, Ry, _RM]),
+    soil_at_or_above(BotElev, Type, Des),
+    friction_angle(Type, Des, PhiDeg),
+    V is abs(Ry),
+    deg2rad(PhiDeg, PhiR),
+    FS is (V * tan(PhiR)) / PaH.
+
+% eccentricity(+H, +B, +PaH, +PaV, -V, -SumM, -E)
+eccentricity(H, B, PaH, PaV, V, SumM, E) :-
+    wall_resultant(H, B, PaH, PaV, [_Rx, Ry, RM]),
+    V is abs(Ry),
+    SumM is RM,
+    X    is SumM / V,
+    E    is abs(B / 2 - X).
+
+% is_safe(+H, +Ka, +DeltaDeg, +BotElev, +B)
+% Succeeds when overturning, sliding, and eccentricity checks all pass.
+is_safe(H, DeltaDeg, BotElev, B, PaH, PaV) :-
+
+    fs_overturning(H, B, PaH, FSO),
+    fs_overturning_min(FSOMin), FSO >= FSOMin,
+    fs_sliding(H, B, BotElev, PaH, PaV, FSS),
+    fs_sliding_min(FSSMin), FSS >= FSSMin.
+
+
+
+% ============================================================
+% Wall Design
+% ============================================================
+
+% design_wall(+Above, +Below, +TopElev, +BotElev, +H, +BearingLoad, -B, -TotalV, -SumM, -E, +AllowS)
+%
+% Finds the minimum base width B (0.5 m increments, starting at H/4)
+% satisfying stability, settlement, and bearing capacity requirements.
+%
+% Above       : element above the wall  (embankment => sloped backfill)
+% Below       : element below the wall  (embankment => sloped surcharge)
+% BearingLoad : additional vertical load (kN/m) at the bearing X location
+%               (applied 0.6 m from the wall toe at the top of the wall).
+%               Pass 0 when no bearing load is present.
+design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, B, TotalV, SumM, E, AllowS) :-
+    DeltaDeg is 0,
+    ( Above == embankment -> BetaDeg is 26.6 ; BetaDeg is 0 ),
+    soil_at_or_above(BotElev, Type, Des),
+    friction_angle(Type, Des, PhiDeg),
+    ka(90, BetaDeg, PhiDeg, DeltaDeg, Ka),
+ 
+    % Iterate base width until stable.
+    StartB is H / 4,
+    between(0, 20, I),
+    B is StartB + I * 0.5,
+    % forces
+    pa_components(H, Ka, DeltaDeg, PaH, PaV),
+ 
+    % Eccentricity including the bearing X vertical load.
+    % BearingLoad acts downward at 0.6 m from the toe (top of wall),
+    % adding BearingLoad to total vertical force and 0.6*BearingLoad to the
+    % stabilising moment about the toe.
+    eccentricity(H, B, PaH, PaV, WallV, WallSumM, _E0),
+    TotalV is WallV + BearingLoad,
+    SumM   is WallSumM + 0.6 * BearingLoad,
+    X      is SumM / TotalV,
+    E      is abs(B / 2 - X),
+    E =< B / 6,
+ 
+    is_safe(H, DeltaDeg, BotElev, B,  PaH, PaV),
+ 
+    % check settlement and capacity in soil below
+    % characteristics of soil below
+    (Below == embankment -> (BetaDegB is 26.6, Defact is 2.0); (BetaDegB is 0, Defact is 1.0)),
+    soil_at_or_above(BotElev, Type2, Des2),
+    friction_angle(Type2, Des2, PhiDegB),
+    soil_gamma(Gamma),
+ 
+    % Settlement check.
+    Bp is B - 2 * E,
+    Qa is TotalV / Bp,
+    depth_to_rock(BotElev, Hr),
+    elastic_modulus(Type2, Des2, Es),   % elastic modulus (kPa) — TODO: can this be modified for the slope?
+    Es2 is Es/Defact,                   %adjsut for slope
+    settlement_strip(S, Qa, Bp, Hr, Es2),
+    S < AllowS,
+ 
+    % Bearing capacity check.
+    C        is 0,
+    L        is 3 * B,
+    D        is 0,
+    
+    ultimate_bearing_capacity(C, PhiDegB, Gamma, Bp, L, D, BetaDegB, Qr),
+    Qa < Qr,
+
+    format("B  = ~1f m~n",   [B]),
+    format("H  = ~1f m~n",   [H]),
+    format("S  = ~1f mm~n",  [S]),
+    format("Qa = ~1f kPa~n", [Qa]),
+    format("Qr = ~1f kPa~n", [Qr]),
+    !.
+
+    %2026-03-12 To do list
+    % bearingX for abutment_rteaing wall (retaing structure that goues to surface)
+    
