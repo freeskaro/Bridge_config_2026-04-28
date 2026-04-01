@@ -48,8 +48,9 @@ x1min(0.450).
 %
 % PilesElem = none
 %     when a footing solution is found.
-% PilesElem = elem(piles, RowCounts, none, none, none, none, none)
-%     when the pile fallback is used, where RowCounts = [N1], [N1,N2], or [N1,N2,N3].
+% PilesElem = elem(piles, RowCounts, Spacings, none, none, none, none)
+%     when the pile fallback is used, where RowCounts = [N1], [N1,N2], or [N1,N2,N3]
+%     and Spacings = [X1], [X1,X2], or [X1,X2,X3] (srow X-positions from cap front, m).
 %
 % Pile fallback is only attempted for concrete_gravity walls.
 % For all other wall types, failure here causes the caller to backtrack
@@ -85,8 +86,9 @@ wall_design_or_piles(Above, H, B, W, SumM, E,
 % Iterates B (wall base width) in 0.5 m steps.
 % For each B, derives Pcf/Mcf/Vcf from the wall equilibrium and
 % searches for the best pile configuration.
-% PilesElem = elem(piles, RowCounts, none, none, none, none, none) on success,
-%             where RowCounts = [N1], [N1,N2], or [N1,N2,N3].
+% PilesElem = elem(piles, RowCounts, Spacings, none, none, none, none) on success,
+%             where RowCounts = [N1], [N1,N2], or [N1,N2,N3]
+%             and Spacings = [X1], [X1,X2], or [X1,X2,X3] (srow X-positions, m).
 
 pile_fallback(Above, H, B, Below, BotElev, BearingLoad,
               Curr, WallType, Processed, PilesElem) :-
@@ -130,11 +132,11 @@ pile_fallback(Above, H, B, Below, BotElev, BearingLoad,
                [Rows, Nt, P1, P3, Hi]),
         X2new is BotX - 1.5,
         Processed = elem(Elem, BotX, BotElev, X2new, TopElev, B, WallType),
-        ( Rows =:= 1 -> RowCounts = [N1]
-        ; Rows =:= 2 -> RowCounts = [N1, N2]
-        ;               RowCounts = [N1, N2, N3]
+        ( Rows =:= 1 -> RowCounts = [N1],       Spacings = [X1]
+        ; Rows =:= 2 -> RowCounts = [N1, N2],   Spacings = [X1, X2]
+        ;               RowCounts = [N1, N2, N3], Spacings = [X1, X2, X3]
         ),
-        PilesElem = elem(piles, RowCounts, none, none, none, none, none)
+        PilesElem = elem(piles, RowCounts, Spacings, none, none, none, none)
     ),
     !.   % commit to first B that yields a pile solution
 
