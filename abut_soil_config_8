@@ -353,12 +353,12 @@ design_retain_aux([], Acc, Acc).
 
 design_retain_aux([Head | Tail], Acc, Result) :-
     Head = elem(Elem, BotX, BotElev, TopX, TopElev, _, _),
-    ( Acc == []         -> Below = bottom
-    ; Acc = [Prev | _],  Prev = elem(Below, _, _, _, _, _, _)
+    ( Acc == []         -> Below = bottom                       %no element below thus bottom
+    ; Acc = [Prev | _],  Prev = elem(Below, _, _, _, _, _, _)   %an element below record type in Below
     ),
-    ( Elem == retainment ->
-        ( Tail == []          -> Above = none
-        ; Tail = [Next | _],   Above = Next
+    ( Elem == retainment ->                                     %if current element is type "retainement" then
+        ( Tail == []          -> Above = none                   %if there is no elements after, it the top element, nothing above
+        ; Tail = [Next | _],   Above = Next                     %otherwise next element is Above is Next
         ),
         % Wall type: concrete gravity only if retainment reaches surface;
         % otherwise any retaining wall type is valid.
