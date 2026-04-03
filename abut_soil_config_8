@@ -33,7 +33,7 @@
 soil_log1(gravel, loose,  100).
 soil_log1(gravel, loose,   97).
 soil_log1(gravel, medium,   95.5).
-soil_log1(gravel, medium,   93).
+soil_log1(gravel, dense,   93).
 soil_log1(rock, sound, 90).
 
 nspan(1).
@@ -99,7 +99,12 @@ build_list(L) :-
     keysort(Pairs, Sorted),
     strip_keys(Sorted, L).
 
-% assert_soil_from_logs
+% assert_all_soil_logs
+% Assert every soil_log/3 entry as a corresponding soil/3 fact.
+assert_all_soil_logs :-
+    forall(soil_log1(Type, Density, Elev),
+           assertz(soil_log(Type, Density, Elev))).
+
 % Convert soil_log/3 descriptions into soil/3 samples every 1.5 m.
 % Samples run from the highest logged elevation down to frost_depth below
 % the project bottom, ensuring coverage for all footing base elevations.
@@ -109,26 +114,23 @@ assert_soil_from_logs :-
     keysort(Logs0, LogsAsc),
     reverse(LogsAsc, LogsDesc),
     LogsDesc = [TopElev-_-_ | _],
-    bottom(ProjBottom),
-    frost_depth(Df),
-    StopElev is ProjBottom - Df,
-    assert_soil_samples(TopElev, StopElev, LogsDesc).
 
-% assert_all_soil_logs
-% Assert every soil_log/3 entry as a corresponding soil/3 fact.
-assert_all_soil_logs :-
-    forall(soil_log1(Type, Density, Elev),
-           assertz(soil_log(Type, Density, Elev))).
+    assert_soil_samples(TopElev, LogsDesc).
 
-% assert_soil_samples(+Elev, +StopElev, +LogsDesc)
-% Step down by 1.5 m, asserting one soil/3 fact per step, until Elev < StopElev.
-assert_soil_samples(Elev, StopElev, Logs) :-
+
+% assert_soil_samples(+Elev, +LogsDesc)
+% Step down by 1.5 m, asserting one soil/3 fact per step.
+% Stops when Elev drops below the lowest log entry elevation.
+assert_soil_samples(Elev, Logs) :-
+    last(Logs, StopElev-_-_),
     ( Elev >= StopElev ->
         soil_log_type_for_elev(Elev, Logs, Type, Density),
         assertz(soil(Type, Density, Elev)),
         NextElev is Elev - 1.5,
-        assert_soil_samples(NextElev, StopElev, Logs)
-    ;   true
+        assert_soil_samples(NextElev, Logs)
+    ;   % stepped past StopElev without landing on it — assert one final entry there
+        soil_log_type_for_elev(StopElev, Logs, Type, Density),
+        assertz(soil(Type, Density, StopElev))
     ).
 
 % soil_log_type_for_elev(+Elev, +LogsDesc, -Type, -Density)
@@ -388,7 +390,7 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         %start wall design
         allowable_settlement_for_wall(WallType, AllowS),                            %for type get allowable deflection TODO move to def page
         Dbx is 0.6,
-        wall_design_or_piles(Above, _H, _B, _W, _SumM, _E, AdjHead, Below, AllowS, BLoad, Dbx,Processed, PilesElem),
+        wall_design_or_piles(Above, _H, _B, _W, _E, AdjHead, Below, AllowS, BLoad, Dbx,Processed, PilesElem),
 
         % update element description array 
         % append a bearing_x element to description to calculate length
@@ -422,7 +424,7 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         bearing_x_load(BLoad),
         StubHead = elem(Elem, BotX, BotElev, TopX, TopElev, _, concrete_gravity),
         Dbx is -10,                                                                 %Dbx determined lateer as B/2
-        wall_design_or_piles(Above, _H, _B, _W, _SumM, _E,
+        wall_design_or_piles(Above, _H, _B, _W,  _E,
                              StubHead, Below, AllowS, BLoad, Dbx, RawProcessed, PilesElem),       
         % wall_design_or_piles sets TopX = BotX - 1.5 (gravity wall convention).
         % For a stub abutment the base is symmetric: TopX = BotX - B.

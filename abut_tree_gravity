@@ -6,7 +6,7 @@
 %
 % Public interface: design_wall/9
 
-:- module(abut_tree_gravity, [design_wall/12, equilibrium/4,
+:- module(abut_tree_gravity, [design_wall/10, equilibrium/4,
                               soil_at_or_above/3, ka/5,
                               pa_components/5, eccentricity/7]).
 :- use_module('CFEM_4th_prolog_qu').
@@ -167,7 +167,7 @@ is_safe(H, DeltaDeg, BotElev, B, Wallforces) :-
 % BearingLoad : additional vertical load (kN/m) at the bearing X location
 %               (applied 0.6 m from the wall toe at the top of the wall).
 %               Pass 0 when no bearing load is present.
-design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, Rcy, Mcc, E, AllowS) :-
+design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, E, AllowS) :-
     DeltaDeg is 0,
     ( Above == embankment -> BetaDeg is 26.6 ; BetaDeg is 0 ),
     soil_at_or_above(BotElev, Type, Des),
@@ -193,9 +193,11 @@ design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, Rcy, Mcc, E,
     Wallforces = [force(PaH,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)],
     equilibrium(Wallforces,[0,0],[0,0,0],[Rcx,Rcy,Mcc]),
 
-    E is Mcc/Rcy,
-    %E      is abs(B / 2 - X),
-    E =< B / 6,
+    E is abs(Mcc/Rcy),
+    % E =< B / 6, %not required if OM/RM checked
+
+    %format("B  = ~1f m~n",   [B]),
+    %format("E  = ~3f m~n",   [E]),
  
     is_safe(H, DeltaDeg, BotElev, B, Wallforces),
  
@@ -222,6 +224,13 @@ design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, Rcy, Mcc, E,
     
     ultimate_bearing_capacity(C, PhiDegB, Gamma, Bp, L, D, BetaDegB, Qr),
     Qa < Qr,
+
+    format("PaH  = ~1f kN~n",   [PaH]),
+    format("W  = ~1f kN~n",   [W]),
+    format("DDbx  = ~1f m~n",  [DDbx]),
+    format("Rcx  = ~1f kN~n",   [Rcx]),
+    format("Rcy  = ~1f kN~n",   [Rcy]),
+    format("Mcc = ~1f kNm~n",  [Mcc]),
 
     format("B  = ~1f m~n",   [B]),
     format("H  = ~1f m~n",   [H]),

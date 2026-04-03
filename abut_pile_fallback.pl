@@ -16,7 +16,7 @@
 % Drop-in replacement for wall_design/11 in abut_soil_config_8:
 %   Replace the call to wall_design/11 with wall_design_or_piles/11.
 
-:- use_module('abut_tree_gravity',      [design_wall/12, equilibrium/4,
+:- use_module('abut_tree_gravity',      [design_wall/10, equilibrium/4,
                                          soil_at_or_above/3, ka/5,
                                          pa_components/5, eccentricity/7]).
 :- use_module('Abut_tree_footing_def',  [settlement_strip/5]).
@@ -57,13 +57,13 @@ x1min(0.450).
 % For all other wall types, failure here causes the caller to backtrack
 % and try the next wall type from retaining_wall_type/1.
 
-wall_design_or_piles(Above, H, B, W, SumM, E,
+wall_design_or_piles(Above, H, B, W, E,
                      Curr, Below, AllowS, BearingLoad, Dbx, Processed, PilesElem) :-
     Curr = elem(Elem, BotX, BotElev, TopX, TopElev, _, WallType),
     H is TopElev - BotElev,
 
     ( design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx,
-                  B, W, SumM, E, AllowS)
+                  B, E, AllowS)
     ->  % Footing solution found — build Processed directly from already-bound outputs.
         X2 is BotX - 1.5,
         Processed = elem(Elem, BotX, BotElev, X2, TopElev, B, WallType),
@@ -107,21 +107,6 @@ pile_fallback(Above, H, B, Below, BotElev, BearingLoad, Dbx,
     friction_angle(Type, Des, PhiDeg),
     ka(90, BetaDeg, PhiDeg, DeltaDeg, Ka),
     pa_components(H, Ka, DeltaDeg, PaH, PaV),
-
-    % Resultant at wall base centre = (Pcf, Vcf, Mcf).
-    % eccentricity/7 returns WallV (total vertical reaction) and WallSumM
-    % (moment about toe); from those we derive Pcf, Vcf, Mcf.
-    %eccentricity(H, B, PaH, PaV, WallV, WallSumM, _E0),
-
-    % Pcf  = total vertical reaction including the bearing load.
-    %Pcf is WallV + BearingLoad,
-
-    % Vcf  = horizontal reaction = PaH (DeltaDeg = 0, so PaV = 0).
-    %Vcf is PaH,
-
-    % Mcf  = moment about base centre (toe moment minus V * B/2).
-    %SumMtoe is WallSumM + 0.6 * BearingLoad,
-    %Mcf is SumMtoe - Pcf * (B / 2),
 
     ( Dbx > 0 -> DDbx is Dbx ; DDbx is B/2),
     Tocent is B/2-DDbx,
