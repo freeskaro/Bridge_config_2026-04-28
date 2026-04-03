@@ -33,7 +33,7 @@
 soil_log1(gravel, loose,  100).
 soil_log1(gravel, loose,   97).
 soil_log1(gravel, medium,   95.5).
-soil_log1(gravel, dense,   93).
+soil_log1(gravel, medium,   93).
 soil_log1(rock, sound, 90).
 
 nspan(1).
@@ -47,6 +47,10 @@ frost_depth(2).
 hydraulic_opening(15).  %assumed as natural bank width. measures at "bottom", x=0
 design_high_water_level(98.5).
 approach_elevation(100).
+
+% Vertical load (kN) transferred to the retaining wall at the bearing X location.
+bearing_x_load(9000).
+roadway_width(10).
 
 % Retaining wall types and their required frost protection depths.
 retaining_wall_type(concrete_gravity).
@@ -72,8 +76,6 @@ allowable_settlement_for_wall(gabion_block,     50).
 % superstructure loads
 precast(20,950).
  
-% Vertical load (kN) transferred to the retaining wall at the bearing X location.
-bearing_x_load(900).
 
 % ============================================================
 % Helpers
@@ -361,42 +363,44 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         ; Tail = [Next | _],   Above = Next                     %otherwise next element is Above is Next
         ),
         % Wall type: concrete gravity only if retainment reaches surface;
+        % Apply the bearing X vertical load when the retainment wall reaches the surface.
         % otherwise any retaining wall type is valid.
         surface(SurfaceElev),
-        ( TopElev =:= SurfaceElev ->
-            wall_type_at_surface(WallType)
-        ;
-            retaining_wall_type(WallType)
-        ),
-        frost_depth_for_wall(WallType, Df),
-        bottom(BottomElev),
-        Theta is atan(0.5),
-        ( BotElev > BottomElev ->                       %if gravity wall is above river bed
-            AdjBotX    is BotX   - Df * sin(Theta),     %plateau "a" for minimum d
-            AdjBotElev is BotElev - Df * cos(Theta)     %depth "d" for minimum frost protection
-        ;
-            AdjBotX    = BotX,                          %if gravity wall is below riverbed
-            AdjBotElev is BotElev - Df
-        ),
-        AdjHead = elem(Elem, AdjBotX, AdjBotElev, TopX, TopElev, _, WallType),
-        allowable_settlement_for_wall(WallType, AllowS),
-
-        % Apply the bearing X vertical load when the retainment wall reaches the surface.
-        ( TopElev =:= SurfaceElev ->
+        ( TopElev =:= SurfaceElev ->                            %retaining element continues to surface thus abutment and of two types: concrete, crib
+            wall_type_at_surface(WallType),
             bearing_x_load(BLoad)
         ;
+            retaining_wall_type(WallType),                     %otherwise just retaining earth can also be MSE and Gabion
             BLoad = 0
         ),
-        wall_design_or_piles(Above, _H, _B, _W, _SumM, _E, AdjHead, Below, AllowS, BLoad, Processed, PilesElem),
+        frost_depth_for_wall(WallType, Df),                     %define frost depth according to type
+        bottom(BottomElev),                                     %check if on slope or below river to define geomtry 
+        Theta is atan(0.5),
+        ( BotElev > BottomElev ->                               %if gravity wall is above river bed
+            AdjBotX    is BotX   - Df * sin(Theta),             %plateau "a" for minimum d
+            AdjBotElev is BotElev - Df * cos(Theta)             %depth "d" for minimum frost protection
+        ;
+            AdjBotX    = BotX,                                  %if gravity wall is below riverbed
+            AdjBotElev is BotElev - Df
+        ),
+        AdjHead = elem(Elem, AdjBotX, AdjBotElev, TopX, TopElev, _, WallType),      %adjust element description with updateed info
 
-        % If the retainment reaches the surface, append a bearing_x element:
-        % a vertical stub from bearing level to surface at the base X - 0.6 m.
+        %start wall design
+        allowable_settlement_for_wall(WallType, AllowS),                            %for type get allowable deflection TODO move to def page
+        Dbx is 0.6,
+        wall_design_or_piles(Above, _H, _B, _W, _SumM, _E, AdjHead, Below, AllowS, BLoad, Dbx,Processed, PilesElem),
+
+        % update element description array 
+        % append a bearing_x element to description to calculate length
+        % a bearing "element" with seat below girder level at the base X - 0.6 m.
+        initial_depth(_,DepthFromRatio),
+
         Processed = elem(_, ProcBotX, _, _, _, _, _),
         ( TopElev  =:= SurfaceElev ->
             BxBotX    is ProcBotX - 0.6,
-            BxBotElev is SurfaceElev - 1.5,
+            BxBotElev is SurfaceElev - DepthFromRatio,
             BearXElem = elem(bearing_x, BxBotX, BxBotElev, BxBotX, SurfaceElev, 0, none),
-            NewAcc0 = [BearXElem, Processed | Acc]
+            NewAcc0 = [BearXElem, Processed | Acc]                                  %update element record
         ;
             NewAcc0 = [Processed | Acc]
         ),
@@ -417,19 +421,20 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         allowable_settlement_for_wall(concrete_gravity, AllowS),
         bearing_x_load(BLoad),
         StubHead = elem(Elem, BotX, BotElev, TopX, TopElev, _, concrete_gravity),
+        Dbx is -10,                                                                 %Dbx determined lateer as B/2
         wall_design_or_piles(Above, _H, _B, _W, _SumM, _E,
-                             StubHead, Below, AllowS, BLoad, RawProcessed, PilesElem),
+                             StubHead, Below, AllowS, BLoad, Dbx, RawProcessed, PilesElem),       
         % wall_design_or_piles sets TopX = BotX - 1.5 (gravity wall convention).
         % For a stub abutment the base is symmetric: TopX = BotX - B.
         RawProcessed = elem(stub_abutment, PBotX, PBotElev, _, PTopElev, PB, PWT),
         PTopX is PBotX - PB,
-        Processed = elem(stub_abutment, PBotX, PBotElev, PTopX, PTopElev, PB, PWT),
+        Processed = elem(stub_abutment, PBotX, PBotElev, PTopX, PTopElev, PB, PWT), %update element description
         ( PilesElem \== none ->
             NewAcc = [PilesElem, Processed | Acc]
         ;
             NewAcc = [Processed | Acc]
         ),
-        design_retain_aux(Tail, NewAcc, Result)
+        design_retain_aux(Tail, NewAcc, Result)                                     %expecting termination of list traversing 
 
     ;
         design_retain_aux(Tail, [Head | Acc], Result)

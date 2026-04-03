@@ -6,7 +6,7 @@
 %
 % Public interface: design_wall/9
 
-:- module(abut_tree_gravity, [design_wall/11, equilibrium/4,
+:- module(abut_tree_gravity, [design_wall/12, equilibrium/4,
                               soil_at_or_above/3, ka/5,
                               pa_components/5, eccentricity/7]).
 :- use_module('CFEM_4th_prolog_qu').
@@ -46,7 +46,7 @@ equilibrium([], [_Xo, _Yo], React, React).
 equilibrium([force(Fx, Fy, M, X, Y) | Rest], [Xo, Yo], [Rx, Ry, Mo], React) :-
     Rx2 is Rx - Fx,
     Ry2 is Ry - Fy,
-    M2  is Mo  + (X-Xo) * Fy + (Y-Yo) * Fx - M,
+    M2  is Mo  + (X-Xo) * Fy - (Y-Yo) * Fx + M,
     equilibrium(Rest, [Xo, Yo], [Rx2, Ry2, M2], React).
 
 
@@ -98,46 +98,34 @@ ka(AlphaDeg, BetaDeg, PhiDeg, DeltaDeg, Ka) :-
 % Horizontal and vertical components of the total active thrust.
 pa_components(H, Ka, DeltaDeg, PaH, PaV) :-
     soil_gamma(Gamma),
-    Pa is 0.5 * Ka * Gamma * H^2,
+    roadway_width(Z),
+    Pa is 0.5 * Ka * Gamma * Z * H^2,
     deg2rad(DeltaDeg, DeltaR),
     PaH is Pa * cos(DeltaR),
     PaV is Pa * sin(DeltaR).
-
-% force_moment(+Force, +[Xo,Yo], -Moment)
-% Resolve a single force into its moment about a reference point.
-force_moment(force(Fx, Fy, M, X, Y), [Xo, Yo], Moment) :-
-    Moment is + (X - Xo) * Fy + (Y - Yo) * Fx - M.
-
-% wall_force_list(+H, +B, +PaH, +PaV, -Forces)
-% Assemble the weight and active thrust forces acting on the wall.
-wall_force_list(H, B, PaH, PaV, [WeightForce, ThrustForce]) :-
-    wall_gamma(GammaC),
-    W is B * H * GammaC+abs(PaV),
-    WeightForce = force(0, -W, 0, -B / 2, H / 2),
-    ThrustForce = force(PaH,0 , 0, -B, H / 3).
-
-% wall_resultant(+H, +B, +PaH, +PaV, -[Rx, Ry, RM])
-% Resolve the resultant force components and moment from the applied forces.
-wall_resultant(H, B, PaH, PaV, [Rx, Ry, RM]) :-
-    wall_force_list(H, B, PaH, PaV, Forces),
-    equilibrium(Forces, [0, 0], [0, 0, 0], [Rx, Ry, RM]).
 
 % ============================================================
 % Stability Checks
 % ============================================================
 
 % fs_overturning(+H, +B, +PaH, -FS)
-fs_overturning(H, B, PaH, FS) :-
-    wall_force_list(H, B, PaH, 0, [WeightForce, ThrustForce]),
-    force_moment(WeightForce, [0, 0], Mw),
-    force_moment(ThrustForce, [0, 0], Mp),
-    Mr is abs(Mw),
-    Mo is abs(Mp),
+fs_overturning(H, B, FS, Wallforces) :-
+
+    Wallforces = [force(PaH,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)],
+    %moments about toe
+    equilibrium([force(0,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)], [B/2, 0], [0, 0, 0], [_, _, Mrtoe]),
+    equilibrium([force(PaH,-PaV,0,-B/2,H/3)], [B/2, 0], [0, 0, 0], [_, _, Motoe]),
+    Mr is abs(Mrtoe),
+    Mo is abs(Motoe),
+    %format("Mr  = ~1f kNm~n",   [Mr]),
+    %format("Mo  = ~1f kNm~n",  [Mo]),
     FS is Mr / Mo.
 
 % fs_sliding(+H, +B, +BotElev, +PaH, +PaV, -FS)
-fs_sliding(H, B, BotElev, PaH, PaV, FS) :-
-    wall_resultant(H, B, PaH, PaV, [_Rx, Ry, _RM]),
+fs_sliding(H, B, BotElev, FS, Wallforces) :-
+
+    Wallforces = [force(PaH,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)],
+    equilibrium([force(PaH,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)], [B/2, 0], [0, 0, 0], [Rx, Ry, Mc]),
     soil_at_or_above(BotElev, Type, Des),
     friction_angle(Type, Des, PhiDeg),
     V is abs(Ry),
@@ -154,12 +142,14 @@ eccentricity(H, B, PaH, PaV, V, SumM, E) :-
 
 % is_safe(+H, +Ka, +DeltaDeg, +BotElev, +B)
 % Succeeds when overturning, sliding, and eccentricity checks all pass.
-is_safe(H, DeltaDeg, BotElev, B, PaH, PaV) :-
+is_safe(H, DeltaDeg, BotElev, B, Wallforces) :-
 
-    fs_overturning(H, B, PaH, FSO),
+    fs_overturning(H, B, FSO,  Wallforces),
     fs_overturning_min(FSOMin), FSO >= FSOMin,
-    fs_sliding(H, B, BotElev, PaH, PaV, FSS),
+    fs_sliding(H, B, BotElev, FSS, Wallforces),
     fs_sliding_min(FSSMin), FSS >= FSSMin.
+    %format("FSO  = ~1f n",   [FSO]),
+    %format("FSS  = ~1f n",  [FSS]).
 
 
 
@@ -177,7 +167,7 @@ is_safe(H, DeltaDeg, BotElev, B, PaH, PaV) :-
 % BearingLoad : additional vertical load (kN/m) at the bearing X location
 %               (applied 0.6 m from the wall toe at the top of the wall).
 %               Pass 0 when no bearing load is present.
-design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, B, TotalV, SumM, E, AllowS) :-
+design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, Rcy, Mcc, E, AllowS) :-
     DeltaDeg is 0,
     ( Above == embankment -> BetaDeg is 26.6 ; BetaDeg is 0 ),
     soil_at_or_above(BotElev, Type, Des),
@@ -195,14 +185,19 @@ design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, B, TotalV, SumM, E, 
     % BearingLoad acts downward at 0.6 m from the toe (top of wall),
     % adding BearingLoad to total vertical force and 0.6*BearingLoad to the
     % stabilising moment about the toe.
-    eccentricity(H, B, PaH, PaV, WallV, WallSumM, _E0),
-    TotalV is WallV + BearingLoad,
-    SumM   is WallSumM + 0.6 * BearingLoad,
-    X      is SumM / TotalV,
-    E      is abs(B / 2 - X),
+    ( Dbx > 0 -> DDbx is Dbx ; DDbx is B/2),
+    Tocent is B/2-DDbx,
+    wall_gamma(GammaC),
+    roadway_width(Z),
+    W is B * H * GammaC * Z,
+    Wallforces = [force(PaH,-PaV,0,-B/2,H/3),force(0,-W,0,0,H/2),force(0,-BearingLoad,0,Tocent,H)],
+    equilibrium(Wallforces,[0,0],[0,0,0],[Rcx,Rcy,Mcc]),
+
+    E is Mcc/Rcy,
+    %E      is abs(B / 2 - X),
     E =< B / 6,
  
-    is_safe(H, DeltaDeg, BotElev, B,  PaH, PaV),
+    is_safe(H, DeltaDeg, BotElev, B, Wallforces),
  
     % check settlement and capacity in soil below
     % characteristics of soil below
@@ -213,7 +208,7 @@ design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, B, TotalV, SumM, E, 
  
     % Settlement check.
     Bp is B - 2 * E,
-    Qa is TotalV / Bp,
+    Qa is Rcy / Bp / Z,
     depth_to_rock(BotElev, Hr),
     elastic_modulus(Type2, Des2, Es),   % elastic modulus (kPa) — TODO: can this be modified for the slope?
     Es2 is Es/Defact,                   %adjsut for slope
