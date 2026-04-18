@@ -6,9 +6,9 @@
 % Soil facts format: soil(Type, Density, TopElev)
 %
 % TODO:
-%   - Modularize further
-%   - Check bearing capacity
-%   - Enforce no slope below retained layer
+%   - if rock is close to lesser of frost depth or scour protection, add concrete base
+%   -  add scour protection: extend bottom of wall, add concrete cushion, add sheet piling 
+%   - expaned soil definition to include clays and presence of blocks
 
 :- use_module(library(lists), [reverse/2]).
 :- consult('abut_config_facts').

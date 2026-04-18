@@ -225,12 +225,12 @@ design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx, B, E, AllowS) :
     ultimate_bearing_capacity(C, PhiDegB, Gamma, Bp, L, D, BetaDegB, Qr),
     Qa < Qr,
 
-    format("PaH  = ~1f kN~n",   [PaH]),
-    format("W  = ~1f kN~n",   [W]),
-    format("DDbx  = ~1f m~n",  [DDbx]),
-    format("Rcx  = ~1f kN~n",   [Rcx]),
-    format("Rcy  = ~1f kN~n",   [Rcy]),
-    format("Mcc = ~1f kNm~n",  [Mcc]),
+    %format("PaH  = ~1f kN~n",   [PaH]),
+    %format("W  = ~1f kN~n",   [W]),
+    %format("DDbx  = ~1f m~n",  [DDbx]),
+    %format("Rcx  = ~1f kN~n",   [Rcx]),
+    %format("Rcy  = ~1f kN~n",   [Rcy]),
+    %format("Mcc = ~1f kNm~n",  [Mcc]),
 
     format("B  = ~1f m~n",   [B]),
     format("H  = ~1f m~n",   [H]),

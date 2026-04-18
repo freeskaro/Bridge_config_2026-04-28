@@ -1,0 +1,229 @@
+% prolog_bridge_config
+% Integrated bridge configuration module.
+%
+% Consults abut_soil_config_8 for abutment/soil geometry and bridge length,
+% then selects superstructure spans and pier type.
+%
+% A solution comprises:
+%   - One embankment configuration (PropElem from abutment geometry)
+%   - Bridge length derived from the designed abutment geometry
+%   - Girder type and span lengths covering that bridge length
+%   - Piers: one per interior support
+%
+% Entry points:
+%   solve_all(-Solutions)          % collect every valid solution into a list
+%   print_all_solutions(+Solutions)
+
+:- use_module(library(lists), [sum_list/2, member/2, memberchk/2]).
+:- consult('abut_soil_config_8').
+
+% ============================================================
+% Girder Properties
+% girder_props(Type, AvailableLengths_m, Depth_m, Width_m, CostPerM_$)
+% Voided precast preferred (easier transport/erection).
+% ============================================================
+
+girder_lengths(voided_precast,  8).
+girder_lengths(voided_precast, 10).
+girder_lengths(voided_precast, 12).
+girder_lengths(voided_precast, 14).
+girder_lengths(next_beams,      9).
+girder_lengths(next_beams,     11).
+girder_lengths(next_beams,     13).
+girder_lengths(next_beams,     15).
+girder_lengths(next_beams,     17).
+girder_lengths(next_beams,     19).
+girder_lengths(steel_beams,     20).
+girder_lengths(steel_beams,     25).
+girder_lengths(steel_beams,     30).
+girder_lengths(steel_beams,     35).
+girder_lengths(steel_beams,     40).
+
+
+girder_props(voided_precast, depth(0.51), width(1.2),  cost_per_m(2500)).
+girder_props(next_beams,     depth(1.0),  width(2.5),  cost_per_m(5000)).
+girder_props(steel_beams,     depth(1.0),  width(1.5),  cost_per_m(3000)).
+
+% Voided precast is preferred: try it first via ordering of girder_lengths facts above.
+
+% ============================================================
+% Substructure Properties
+% substructure_props(ElemType, Description, CostPerMWidth_$)
+%   cost is per metre of bridge width (transverse)
+% ============================================================
+
+% Interior piers: pipe pile bents with steel pier caps
+substructure_props(pier,           pipe_pile_bent,          20000).
+
+% Spill-through abutment: pile pipe bents with steel pier caps
+substructure_props(spill_through,  pile_pipe_bent,          10000).
+
+% Earth-retaining abutment: CIP cantilever retaining wall with wing walls
+substructure_props(earth_retaining, concrete_gravity,    50000).
+substructure_props(earth_retaining, MSE,    1000).
+substructure_props(earth_retaining, timber_crib,    1000).
+substructure_props(earth_retaining, gabion,    2000).
+substructure_props(earth_retaining, stub_abutment,    4000).
+
+%add cost for pile, require depth to rock
+
+% ============================================================
+% Bearing / Surface Setup for a Specific Span Count
+% ============================================================
+
+% compute_bearing_for_nspan(+N, +BridgeLength0,
+%                           -BearingElev, -DepthFromRatio, -SurfaceElev)
+compute_bearing_for_nspan(N, BridgeLength0, BearingElev, DepthFromRatio, SurfaceElev) :-
+    design_high_water_level(DHWL),
+    approach_elevation(ApproachElev),
+    DepthFromRatio is max(BridgeLength0 / (N * 30), 1.5),
+    RawElev        is ApproachElev - DepthFromRatio,
+    BearingElev    is max(DHWL + 0.3, RawElev),
+    SurfaceElev    is BearingElev + DepthFromRatio.
+
+% ============================================================
+% Span Configuration
+% span_config(+NSpans, +BridgeLength, -GirderType, -SpanLengths, -NPiers)
+% Spans must cover BridgeLength but not exceed it by 3 m (tight fit rule).
+% ============================================================
+
+span_config(1, BridgeLength, GirderType, [L], 0) :-
+    girder_lengths(GirderType, L),
+    L >= BridgeLength,
+    L < BridgeLength + 3.
+
+span_config(2, BridgeLength, GirderType, [L, L], 1) :-
+    girder_lengths(GirderType, L),
+    2 * L >= BridgeLength,
+    2 * L < BridgeLength + 3.
+
+% 3-span symmetric: L1, L2, L1
+span_config(3, BridgeLength, GirderType, [L1, L2, L1], 2) :-
+    girder_lengths(GirderType, L1),
+    girder_lengths(GirderType, L2),
+    L2 >= L1,
+    2 * L1 + L2 >= BridgeLength,
+    2 * L1 + L2 < BridgeLength + 3.
+
+% ============================================================
+% Abutment Style (derived from designed PropElem)
+% ============================================================
+
+% earth_retaining when any retainment element is present
+abutment_style(PropElem, earth_retaining,Type) :-
+    member(elem(retainment, _, _, _, _, _, Type), PropElem), !.
+abutment_style(_, spill_through,none).
+
+% ============================================================
+% Number of Girders per Span
+% ============================================================
+
+% n_girders(+GirderType, +RoadwayWidth, -N)
+% Ceiling division: enough girders to cover the full deck width.
+n_girders(GirderType, RoadwayWidth, N) :-
+    girder_props(GirderType, _, width(GW), _),
+    N is ceiling(RoadwayWidth / GW).
+
+% ============================================================
+% Cost Calculation
+% ============================================================
+
+% solution_cost(+solution(...), -TotalCost_$)
+% Cost = girder cost + abutment cost (×2) + pier cost
+solution_cost(
+        solution(_N, PropElem, _BridgeLength, GirderType, SpanLengths, Piers),
+        TotalCost) :-
+    roadway_width(RW),
+    % --- girder cost ---
+    girder_props(GirderType, _, _, cost_per_m(CpM)),
+    n_girders(GirderType, RW, NGirders),
+    sum_list(SpanLengths, TotalSpanLen),
+    GirderCost is CpM * TotalSpanLen * NGirders,
+    % --- abutment cost (both sides) ---
+    abutment_style(PropElem, AbutStyle,Type),
+    substructure_props(AbutStyle,Type, AbutRate),
+    AbutCost is 2 * AbutRate * RW,
+    % --- pier cost ---
+    Piers = piers(NPiers, _, _, _, _),
+    substructure_props(pier, _, PierRate),
+    PierCost is NPiers * PierRate * RW,
+    TotalCost is GirderCost + AbutCost + PierCost.
+
+% ============================================================
+% Solution Generator
+% ============================================================
+
+% solve_all(-Solutions)
+% Each element: solution(NSpans, PropElem, BridgeLength,
+%                        GirderType, SpanLengths, Piers)
+solve_all(Solutions) :-
+    findall(Sol, solve_one(Sol), Solutions).
+
+% solve_one(-Solution)
+% Backtracks over: nspan(N) x embankment geometry x span config
+solve_one(solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers)) :-
+    nspan(N),
+    % --- initialise dynamic state for this N ---
+    retract_all_facts,
+    assert_all_soil_logs,
+    initial_bridge_length(BridgeLength0),
+    compute_bearing_for_nspan(N, BridgeLength0, BearingElev, DepthFromRatio, SurfaceElev),
+    assertz(initial_depth(N, DepthFromRatio)),
+    assertz(surface(SurfaceElev)),
+    assertz(soil_log(gravel, dense, SurfaceElev)),
+    assert_soil_from_logs,
+    % --- abutment geometry (backtracks over slope/confined combos) ---
+    build_list(LayerList),
+    bottom(BottomElev),
+    iter_depth(LayerList, BottomElev, 0, none, [[0, BottomElev, bottom]],
+               Profile, _, _),
+    compile_elements(Profile, DepthFromRatio, _, _, AbutElem),
+    design_retain(AbutElem, PropElem),
+    % --- bridge length from designed geometry ---
+    bridge_length(PropElem, BridgeLength),
+    % --- superstructure (voided_precast tried first) ---
+    span_config(N, BridgeLength, GirderType, SpanLengths, NPiers),
+    % --- piers ---
+    bottom(BottomElev),
+    pier_config(NPiers, BottomElev, BearingElev, Piers).
+
+% ============================================================
+% Pier Configuration
+% pier_config(+NPiers, +BotElev, +BearingElev, -Piers)
+% Piers are always pipe pile bents.
+% ============================================================
+
+pier_config(0, _, _, piers(0, none, 0, _, _)) :- !.
+pier_config(NPiers, BotElev, BearingElev,
+            piers(NPiers, pipe_pile_bent, Height, BotElev, BearingElev)) :-
+    NPiers > 0,
+    Height is BearingElev - BotElev.
+
+% ============================================================
+% Solution Printing
+% ============================================================
+
+print_solution(Sol) :-
+    Sol = solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers),
+    abutment_style(PropElem, AbutStyle),
+    solution_cost(Sol, TotalCost),
+    roadway_width(RW),
+    n_girders(GirderType, RW, NGirders),
+    format("~n=== ~w-span | ~1f m | ~w | ~w ===~n",
+           [N, BridgeLength, GirderType, AbutStyle]),
+    format("  Spans (m): ~w~n", [SpanLengths]),
+    format("  Girders per span: ~w  (~w m wide each)~n",
+           [NGirders, GirderType]),
+    Piers = piers(NP, _, PH, _, _),
+    ( NP =:= 0 ->
+        format("  Piers: none~n")
+    ;
+        format("  Piers: ~w x pipe_pile_bent, height ~1f m~n", [NP, PH])
+    ),
+    format("  Total cost: $~:d~n", [TotalCost]),
+    print_solution_summary(PropElem).
+
+print_all_solutions([]).
+print_all_solutions([S | Rest]) :-
+    print_solution(S),
+    print_all_solutions(Rest).
