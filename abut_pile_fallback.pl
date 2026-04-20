@@ -16,28 +16,15 @@
 % Drop-in replacement for wall_design/11 in abut_soil_config_8:
 %   Replace the call to wall_design/11 with wall_design_or_piles/11.
 
+% Pile design parameters, unit weights, and pile catalogue are defined in
+% site_facts and bridge_facts, which are loaded by abut_soil_config_8
+% before this file is consulted.
+
 :- use_module('abut_tree_gravity',      [design_wall/10, equilibrium/4,
                                          soil_at_or_above/3, ka/5,
                                          pa_components/5, eccentricity/7]).
 :- use_module('Abut_tree_footing_def',  [settlement_strip/5]).
 :- use_module('CFEM_4th_prolog_qu',     [ultimate_bearing_capacity/8]).
-soil_gamma(20).             % kN/m³  — retained soil unit weight
-wall_gamma(24).             % kN/m³  — concrete unit weight
-
-% ============================================================
-% Pile Design Parameters  (override per project)
-% ============================================================
-
-pile_incl(4).          % inclination factor for inclined piles
-pile_pmax(900).         % maximum allowable pile load (kN)
-pile_hlat(125).          % maximum allowable lateral load per pile (kN)
-pile_mc_threshold(50).   % Mc below which centroid formula applies (kNm)
-
-n1_range([4,6,8,10,12,14]).
-n2_range([4,6,8,10,12]).
-n3_range([4,6,8,10,12]).
-dias([0.3,0.4,0.5,0.6]).
-x1min(0.450).
 
 
 % ============================================================

@@ -14,58 +14,10 @@
 %   solve_all(-Solutions)          % collect every valid solution into a list
 %   print_all_solutions(+Solutions)
 
-:- use_module(library(lists), [sum_list/2, member/2, memberchk/2]).
 :- consult('abut_soil_config_8').
-
-% ============================================================
-% Girder Properties
-% girder_props(Type, AvailableLengths_m, Depth_m, Width_m, CostPerM_$)
-% Voided precast preferred (easier transport/erection).
-% ============================================================
-
-girder_lengths(voided_precast,  8).
-girder_lengths(voided_precast, 10).
-girder_lengths(voided_precast, 12).
-girder_lengths(voided_precast, 14).
-girder_lengths(next_beams,      9).
-girder_lengths(next_beams,     11).
-girder_lengths(next_beams,     13).
-girder_lengths(next_beams,     15).
-girder_lengths(next_beams,     17).
-girder_lengths(next_beams,     19).
-girder_lengths(steel_beams,     20).
-girder_lengths(steel_beams,     25).
-girder_lengths(steel_beams,     30).
-girder_lengths(steel_beams,     35).
-girder_lengths(steel_beams,     40).
+:- consult('bridge_facts').
 
 
-girder_props(voided_precast, depth(0.51), width(1.2),  cost_per_m(2500)).
-girder_props(next_beams,     depth(1.0),  width(2.5),  cost_per_m(5000)).
-girder_props(steel_beams,     depth(1.0),  width(1.5),  cost_per_m(3000)).
-
-% Voided precast is preferred: try it first via ordering of girder_lengths facts above.
-
-% ============================================================
-% Substructure Properties
-% substructure_props(ElemType, Description, CostPerMWidth_$)
-%   cost is per metre of bridge width (transverse)
-% ============================================================
-
-% Interior piers: pipe pile bents with steel pier caps
-substructure_props(pier,           pipe_pile_bent,          20000).
-
-% Spill-through abutment: pile pipe bents with steel pier caps
-substructure_props(spill_through,  pile_pipe_bent,          10000).
-
-% Earth-retaining abutment: CIP cantilever retaining wall with wing walls
-substructure_props(earth_retaining, concrete_gravity,    50000).
-substructure_props(earth_retaining, MSE,    1000).
-substructure_props(earth_retaining, timber_crib,    1000).
-substructure_props(earth_retaining, gabion,    2000).
-substructure_props(earth_retaining, stub_abutment,    4000).
-
-%add cost for pile, require depth to rock
 
 % ============================================================
 % Bearing / Surface Setup for a Specific Span Count
@@ -105,6 +57,9 @@ span_config(3, BridgeLength, GirderType, [L1, L2, L1], 2) :-
     2 * L1 + L2 >= BridgeLength,
     2 * L1 + L2 < BridgeLength + 3.
 
+sum_spans([], 0).
+sum_spans([H | T], S) :- sum_spans(T, S1), S is S1 + H.
+
 % ============================================================
 % Abutment Style (derived from designed PropElem)
 % ============================================================
@@ -124,30 +79,6 @@ n_girders(GirderType, RoadwayWidth, N) :-
     girder_props(GirderType, _, width(GW), _),
     N is ceiling(RoadwayWidth / GW).
 
-% ============================================================
-% Cost Calculation
-% ============================================================
-
-% solution_cost(+solution(...), -TotalCost_$)
-% Cost = girder cost + abutment cost (×2) + pier cost
-solution_cost(
-        solution(_N, PropElem, _BridgeLength, GirderType, SpanLengths, Piers),
-        TotalCost) :-
-    roadway_width(RW),
-    % --- girder cost ---
-    girder_props(GirderType, _, _, cost_per_m(CpM)),
-    n_girders(GirderType, RW, NGirders),
-    sum_list(SpanLengths, TotalSpanLen),
-    GirderCost is CpM * TotalSpanLen * NGirders,
-    % --- abutment cost (both sides) ---
-    abutment_style(PropElem, AbutStyle,Type),
-    substructure_props(AbutStyle,Type, AbutRate),
-    AbutCost is 2 * AbutRate * RW,
-    % --- pier cost ---
-    Piers = piers(NPiers, _, _, _, _),
-    substructure_props(pier, _, PierRate),
-    PierCost is NPiers * PierRate * RW,
-    TotalCost is GirderCost + AbutCost + PierCost.
 
 % ============================================================
 % Solution Generator
@@ -200,27 +131,120 @@ pier_config(NPiers, BotElev, BearingElev,
     Height is BearingElev - BotElev.
 
 % ============================================================
+% Per-Element Cost Calculation
+% ============================================================
+
+% price_element(+Elem, +RW, -priced(Elem, Label, Cost))
+% Prices a single element from PropElem for BOTH abutments combined.
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(piles, RowCounts, _, _, _, _, _), !,
+    sum_spans(RowCounts, NPiles),
+    pile_cost_each(Rate),
+    Cost is 2 * NPiles * Rate,
+    format(atom(Label), "piles (~w piles x2 abuts)", [NPiles]).
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(retainment, _, BotElev, _, TopElev, B, WallType), !,
+    wall_cost_props(WallType, Method, Rate),
+    H is TopElev - BotElev,
+    ( Method == volume ->
+        OneSide is H * B * RW * Rate
+    ;
+        OneSide is H * RW * Rate
+    ),
+    Cost is 2 * OneSide,
+    format(atom(Label), "retainment wall (~w, H=~1f m, B=~1f m)", [WallType, H, B]).
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(stub_abutment, _, BotElev, _, TopElev, B, _), !,
+    wall_cost_props(stub_abutment, volume, Rate),
+    H is TopElev - BotElev,
+    Cost is 2 * H * B * RW * Rate,
+    format(atom(Label), "stub abutment (H=~1f m, B=~1f m)", [H, B]).
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(embankment, _, BotElev, _, TopElev, _, _), !,
+    H is TopElev - BotElev,
+    Cost is 2 * 30 * RW * H,
+    format(atom(Label), "embankment (H=~1f m)", [H]).
+
+price_element(Elem, _RW, priced(Elem, other, 0)).
+
+% price_elements(+PropElem, +RW, -PricedList)
+price_elements([], _, []).
+price_elements([E|Es], RW, [PE|PEs]) :-
+    price_element(E, RW, PE),
+    price_elements(Es, RW, PEs).
+
+% price_pier(+Piers, +RW, -priced(Piers, Label, Cost))
+price_pier(Piers, RW, priced(Piers, Label, Cost)) :-
+    Piers = piers(NPiers, _, _, _, _),
+    substructure_props(pier, _, PierRate),
+    Cost is NPiers * PierRate * RW,
+    format(atom(Label), "piers (~w x pipe_pile_bent)", [NPiers]).
+
+% price_solution(+Sol, -PricedItems, -TotalCost)
+% PricedItems is a list of priced(Item, Label, Cost) for every line item.
+price_solution(solution(_N, PropElem, _BL, GirderType, SpanLengths, Piers),
+               PricedItems, TotalCost) :-
+    roadway_width(RW),
+    % girder line item
+    girder_props(GirderType, _, _, cost_per_m(CpM)),
+    n_girders(GirderType, RW, NGirders),
+    sum_spans(SpanLengths, TotalSpanLen),
+    GirderCost is CpM * TotalSpanLen * NGirders,
+    format(atom(GLabel), "girders (~w, ~w/span, ~1f m total)", [GirderType, NGirders, TotalSpanLen]),
+    GirderItem = priced(girders, GLabel, GirderCost),
+    % per-element abutment items
+    ( is_list(PropElem) ->
+        price_elements(PropElem, RW, ElemItems)
+    ;
+        ElemItems = []
+    ),
+    % pier item
+    price_pier(Piers, RW, PierItem),
+    % assemble
+    append([GirderItem | ElemItems], [PierItem], PricedItems),
+    % sum costs
+    findall(C, member(priced(_, _, C), PricedItems), Costs),
+    sum_spans(Costs, TotalCost).
+
+% solution_cost/2 — backward-compatible wrapper
+solution_cost(Sol, TotalCost) :-
+    price_solution(Sol, _, TotalCost). 
+
+% ============================================================
 % Solution Printing
 % ============================================================
 
+% print_priced_items(+PricedItems, +RunningTotal, -FinalTotal)
+print_priced_items([], Total, Total).
+print_priced_items([priced(_, Label, Cost) | Rest], Acc, Final) :-
+    CostR is round(Cost),
+    format("    ~w  $~:d~n", [Label, CostR]),
+    Acc2 is Acc + Cost,
+    print_priced_items(Rest, Acc2, Final).
+
 print_solution(Sol) :-
     Sol = solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers),
-    abutment_style(PropElem, AbutStyle),
-    solution_cost(Sol, TotalCost),
-    roadway_width(RW),
-    n_girders(GirderType, RW, NGirders),
-    format("~n=== ~w-span | ~1f m | ~w | ~w ===~n",
-           [N, BridgeLength, GirderType, AbutStyle]),
-    format("  Spans (m): ~w~n", [SpanLengths]),
-    format("  Girders per span: ~w  (~w m wide each)~n",
-           [NGirders, GirderType]),
+    abutment_style(PropElem, AbutStyle, WallType),
+    price_solution(Sol, PricedItems, TotalCostRaw),
+    TotalCost is round(TotalCostRaw),
     Piers = piers(NP, _, PH, _, _),
+    format("~n=== ~w-span | ~1f m | ~w ===~n",
+           [N, BridgeLength, GirderType]),
+    format("  Abutment style: ~w (~w)~n", [AbutStyle, WallType]),
+    format("  Spans (m): ~w~n", [SpanLengths]),
     ( NP =:= 0 ->
         format("  Piers: none~n")
     ;
         format("  Piers: ~w x pipe_pile_bent, height ~1f m~n", [NP, PH])
     ),
-    format("  Total cost: $~:d~n", [TotalCost]),
+    format("  --- Cost Breakdown ---~n"),
+    print_priced_items(PricedItems, 0, _),
+    format("  ~n"),
+    format("  TOTAL:  $~:d~n", [TotalCost]),
     print_solution_summary(PropElem).
 
 print_all_solutions([]).

@@ -1,0 +1,90 @@
+% site_facts
+%
+% Bridge location and project-specific facts.
+% Edit this file to reconfigure for a different site.
+%
+% Contents:
+%   - Borehole / soil log data
+%   - Site geometry and hydraulic constraints
+%   - Unit weights for retained soil and concrete
+%   - Retaining wall type selection rules
+%   - Pile design parameters and layout constraints
+
+% ============================================================
+% Soil Log  (borehole data, elevation in m)
+% ============================================================
+
+soil_log1(gravel, loose,  100.0).
+soil_log1(gravel, loose,   97.0).
+soil_log1(gravel, medium,  95.5).
+soil_log1(gravel, dense,   93.0).
+soil_log1(rock,   sound,   90.0).
+
+% ============================================================
+% Site Geometry and Hydraulic Data
+% ============================================================
+
+nspan(1).
+nspan(2).
+nspan(3).
+
+bottom(93).                  % lowest obstacle elevation (m)
+frost_depth(2).              % frost protection depth (m)
+hydraulic_opening(15).       % natural bank width at bottom elevation (m)
+design_high_water_level(98.5).
+approach_elevation(100).
+
+% ============================================================
+% Structural Loads and Roadway
+% ============================================================
+
+roadway_width(10).           % bridge deck width (m)
+bearing_x_load(9000).        % vertical load at bearing seat (kN)
+
+% ============================================================
+% Unit Weights  (kN/m³)
+% ============================================================
+
+soil_gamma(20).              % retained soil unit weight
+wall_gamma(24).              % concrete unit weight (used in pile fallback)
+
+% ============================================================
+% Retaining Wall Type Rules
+% ============================================================
+
+% All wall types available for general retainment
+retaining_wall_type(concrete_gravity).
+retaining_wall_type(mse_wall).
+retaining_wall_type(timber_crib).
+retaining_wall_type(gabion_block).
+
+% Wall types permitted when retainment reaches surface (integral abutment)
+wall_type_at_surface(concrete_gravity).
+wall_type_at_surface(timber_crib).
+
+% Frost protection depth required per wall type (m)
+frost_depth_for_wall(concrete_gravity, Df) :- frost_depth(Df).
+frost_depth_for_wall(mse_wall,         0.4).
+frost_depth_for_wall(timber_crib,      0.4).
+frost_depth_for_wall(gabion_block,     0.4).
+
+% Allowable settlement per wall type (mm)
+allowable_settlement_for_wall(concrete_gravity, 25).
+allowable_settlement_for_wall(mse_wall,         50).
+allowable_settlement_for_wall(timber_crib,      50).
+allowable_settlement_for_wall(gabion_block,     50).
+
+% ============================================================
+% Pile Design Parameters
+% ============================================================
+
+pile_incl(4).               % inclination factor for inclined piles
+pile_pmax(900).             % maximum allowable pile load (kN)
+pile_hlat(125).             % maximum allowable lateral load per pile (kN)
+pile_mc_threshold(50).      % Mc below which single-row centroid formula applies (kNm)
+
+x1min(0.450).               % minimum front-edge pile offset from cap edge (m)
+
+n1_range([4,6,8,10,12,14]). % candidate pile counts for row 1
+n2_range([4,6,8,10,12]).    % candidate pile counts for row 2
+n3_range([4,6,8,10,12]).    % candidate pile counts for row 3

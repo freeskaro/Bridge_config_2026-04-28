@@ -1,0 +1,82 @@
+% bridge_facts
+%
+% Superstructure product catalogue and cost rate facts.
+% These are standard/cross-project values; edit to reflect current price lists
+% or to add new girder/pile products.
+%
+% Contents:
+%   - Girder available lengths and section properties
+%   - Pile diameter catalogue and layout geometry
+%   - Substructure and wall cost unit rates
+
+% ============================================================
+% Girder Lengths  (m) — available stock lengths per girder type
+% Voided precast listed first so the solver tries it before next_beams/steel.
+% ============================================================
+
+girder_lengths(voided_precast,  8).
+girder_lengths(voided_precast, 10).
+girder_lengths(voided_precast, 12).
+girder_lengths(voided_precast, 14).
+girder_lengths(next_beams,      9).
+girder_lengths(next_beams,     11).
+girder_lengths(next_beams,     13).
+girder_lengths(next_beams,     15).
+girder_lengths(next_beams,     17).
+girder_lengths(next_beams,     19).
+girder_lengths(steel_beams,    20).
+girder_lengths(steel_beams,    25).
+girder_lengths(steel_beams,    30).
+girder_lengths(steel_beams,    35).
+girder_lengths(steel_beams,    40).
+
+% ============================================================
+% Girder Section Properties
+% girder_props(Type, depth(m), width(m), cost_per_m($))
+%   cost_per_m: supply + transport + erection, per linear metre per girder
+% ============================================================
+
+girder_props(voided_precast, depth(0.51), width(1.2),  cost_per_m(2500)).
+girder_props(next_beams,     depth(1.0),  width(2.5),  cost_per_m(5000)).
+girder_props(steel_beams,    depth(1.0),  width(2.5),  cost_per_m(5000)). % 2 beams + deck + erection
+
+% ============================================================
+% Pile Diameter Catalogue  (m)
+% ============================================================
+
+dias([0.3, 0.4, 0.5, 0.6]).
+
+% ============================================================
+% Substructure Unit Rates
+% substructure_props(ElemType, Description, CostPerMWidth_$)
+%   cost is per metre of bridge width (transverse direction)
+% ============================================================
+
+substructure_props(pier,          pipe_pile_bent, 20000). % interior piers
+substructure_props(spill_through, pile_pipe_bent, 10000). % spill-through abutments
+
+% ============================================================
+% Wall Cost Properties
+% wall_cost_props(WallType, PricingMethod, UnitRate_$)
+%   volume: cost per abutment = H × B × W × Rate   ($/m³)
+%   area:   cost per abutment = H × W × Rate        ($/m²)
+% ============================================================
+
+wall_cost_props(concrete_gravity, volume, 1700). % incl. ~$500/m³ for reinforcing steel
+wall_cost_props(stub_abutment,    volume, 1700). % incl. ~$500/m³ for reinforcing steel
+wall_cost_props(timber_crib,      volume, 2000). % MTQ liste de prix — steel + timber
+wall_cost_props(mse_wall,         area,   1200). % CAD estimate
+wall_cost_props(gabion_block,     area,   1000). % CAD estimate
+
+% ============================================================
+% Pile Foundation Cost
+% ============================================================
+
+pile_cost_each(6000).   % $ per pile (supply + drive)
+
+% ============================================================
+% Superstructure Loads
+% precast(SpanLength_m, GirderLoad_kN)
+% ============================================================
+
+precast(20, 950).

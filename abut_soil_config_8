@@ -11,70 +11,13 @@
 %   - expaned soil definition to include clays and presence of blocks
 
 :- use_module(library(lists), [reverse/2]).
+:- consult('site_facts').
 :- consult('abut_config_facts').
 :- consult('abut_pile_fallback').
 :- dynamic surface/1.
 :- dynamic soil/3.
 :- dynamic soil_log/3.
 :- dynamic initial_depth/2.
-
-
-% ============================================================
-% Soil Data
-% ============================================================
-%soil(gravel, dense,   100.3).
-%soil(gravel, loose,  100).
-%soil(gravel, loose,  98.5).
-%soil(gravel, loose,   97).
-%soil(gravel, medium,   95.5).
-%soil(gravel, dense,   93).
-%soil(rock, sound, 90).
-
-soil_log1(gravel, loose,  100).
-soil_log1(gravel, loose,   97).
-soil_log1(gravel, medium,   95.5).
-soil_log1(gravel, dense,   93).
-soil_log1(rock, sound, 90).
-
-nspan(1).
-nspan(2).
-nspan(3).
-
-
-%surface(100).
-bottom(93).         % bottom elevation of obstacle
-frost_depth(2).
-hydraulic_opening(15).  %assumed as natural bank width. measures at "bottom", x=0
-design_high_water_level(98.5).
-approach_elevation(100).
-
-% Vertical load (kN) transferred to the retaining wall at the bearing X location.
-bearing_x_load(9000).
-roadway_width(10).
-
-% Retaining wall types and their required frost protection depths.
-retaining_wall_type(concrete_gravity).
-retaining_wall_type(mse_wall).
-retaining_wall_type(timber_crib).
-retaining_wall_type(gabion_block).
-
-% Wall types permitted when retainment reaches the surface.
-wall_type_at_surface(concrete_gravity).
-wall_type_at_surface(timber_crib).
-
-frost_depth_for_wall(concrete_gravity, Df) :- frost_depth(Df).
-frost_depth_for_wall(mse_wall,         0.4).
-frost_depth_for_wall(timber_crib,      0.4).
-frost_depth_for_wall(gabion_block,     0.4).
-
-% Allowable settlement (mm) per wall type.
-allowable_settlement_for_wall(concrete_gravity, 25).
-allowable_settlement_for_wall(mse_wall,         50).
-allowable_settlement_for_wall(timber_crib,      50).
-allowable_settlement_for_wall(gabion_block,     50).
-
-% superstructure loads
-precast(20,950).
  
 
 % ============================================================
