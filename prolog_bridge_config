@@ -145,6 +145,23 @@ price_element(Elem, RW, priced(Elem, Label, Cost)) :-
     format(atom(Label), "piles (~w piles x2 abuts)", [NPiles]).
 
 price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(retainment, _, BotElev, _, TopElev, B, concrete_gravity), !,
+    wall_cost_props(concrete_gravity, volume, Rate),
+    H is TopElev - BotElev,
+    ( B > 2.5 ->
+        % T-shaped cross-section: footing (1.5 x B) + stem ((H-1.5) x 1.5)
+        XSection is 1.5 * B + (H - 1.5) * 1.5,
+        format(atom(Label),
+               "retainment wall (concrete_gravity cantilever, H=~1f m, B=~1f m)", [H, B])
+    ;
+        % Rectangular block
+        XSection is H * B,
+        format(atom(Label),
+               "retainment wall (concrete_gravity, H=~1f m, B=~1f m)", [H, B])
+    ),
+    Cost is 2 * XSection * RW * Rate.
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
     Elem = elem(retainment, _, BotElev, _, TopElev, B, WallType), !,
     wall_cost_props(WallType, Method, Rate),
     H is TopElev - BotElev,

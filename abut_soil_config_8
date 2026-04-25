@@ -356,7 +356,32 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         ;
             NewAcc = NewAcc0
         ),
-        design_retain_aux(Tail, NewAcc, Result)
+        % Propagate designed back face to embankment directly above, then stub abutment.
+        % Embankment: BotX = retainment back face; TopX = BotX - 2 * height (1:2 slope).
+        % Stub:       BearingX shifts by same delta as embankment TopX.
+        Processed = elem(_, _, _, ProcTopX, _, _, _),
+        ( Tail = [elem(embankment, _, EBotElev, ETopX, ETopElev, _, EWT) | TailRest] ->
+            EHeight    is ETopElev - EBotElev,
+            NewEBotX   is ProcTopX,
+            NewETopX   is ProcTopX - 2 * EHeight,
+            EB         is abs(NewETopX - NewEBotX),
+            UpdatedEmb = elem(embankment, NewEBotX, EBotElev, NewETopX, ETopElev, EB, EWT),
+            % Shift stub abutment by the same delta applied to embankment TopX.
+            ( TailRest = [elem(stub_abutment, SBotX, SBotElev, STopX, STopElev, SB, SWT) | TailRest2] ->
+                OrigBearingX is (SBotX + STopX) / 2,
+                BearingOffset is OrigBearingX - ETopX,
+                NewBearingX  is NewETopX + BearingOffset,
+                NewSBotX     is NewBearingX + 0.6,
+                NewSTopX     is NewBearingX - 0.6,
+                UpdatedStub  = elem(stub_abutment, NewSBotX, SBotElev, NewSTopX, STopElev, SB, SWT),
+                NewTail = [UpdatedEmb, UpdatedStub | TailRest2]
+            ;
+                NewTail = [UpdatedEmb | TailRest]
+            )
+        ;
+            NewTail = Tail
+        ),
+        design_retain_aux(NewTail, NewAcc, Result)
 
     ; Elem == stub_abutment ->
         ( Tail == []        -> Above = none
@@ -366,20 +391,21 @@ design_retain_aux([Head | Tail], Acc, Result) :-
         allowable_settlement_for_wall(concrete_gravity, AllowS),
         bearing_x_load(BLoad),
         StubHead = elem(Elem, BotX, BotElev, TopX, TopElev, _, concrete_gravity),
-        Dbx is -10,                                                                 %Dbx determined lateer as B/2
-        wall_design_or_piles(Above, _H, _B, _W,  _E,
-                             StubHead, Below, AllowS, BLoad, Dbx, RawProcessed, PilesElem),       
-        % wall_design_or_piles sets TopX = BotX - 1.5 (gravity wall convention).
-        % For a stub abutment the base is symmetric: TopX = BotX - B.
-        RawProcessed = elem(stub_abutment, PBotX, PBotElev, _, PTopElev, PB, PWT),
-        PTopX is PBotX - PB,
-        Processed = elem(stub_abutment, PBotX, PBotElev, PTopX, PTopElev, PB, PWT), %update element description
+        Dbx is -10,
+        wall_design_or_piles(Above, _H, _B, _W, _E,
+                             StubHead, Below, AllowS, BLoad, Dbx, RawProcessed, PilesElem),
+        % Centre the stub symmetrically on the bearing centreline.
+        RawProcessed = elem(stub_abutment, _, PBotElev, _, PTopElev, PB, PWT),
+        BearingX is (BotX + TopX) / 2,
+        PBotX is BearingX + PB / 2,
+        PTopX is BearingX - PB / 2,
+        Processed = elem(stub_abutment, PBotX, PBotElev, PTopX, PTopElev, PB, PWT),
         ( PilesElem \== none ->
             NewAcc = [PilesElem, Processed | Acc]
         ;
             NewAcc = [Processed | Acc]
         ),
-        design_retain_aux(Tail, NewAcc, Result)                                     %expecting termination of list traversing 
+        design_retain_aux(Tail, NewAcc, Result)
 
     ;
         design_retain_aux(Tail, [Head | Acc], Result)

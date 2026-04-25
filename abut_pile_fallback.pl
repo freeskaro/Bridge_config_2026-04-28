@@ -52,7 +52,7 @@ wall_design_or_piles(Above, H, B, W, E,
     ( design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx,
                   B, E, AllowS)
     ->  % Footing solution found — build Processed directly from already-bound outputs.
-        X2 is BotX - 1.5,
+        ( WallType == mse_wall -> X2 is BotX - 1.5 ; X2 is BotX - B ),
         Processed = elem(Elem, BotX, BotElev, X2, TopElev, B, WallType),
         PilesElem = none
 

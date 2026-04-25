@@ -25,9 +25,13 @@ girder_lengths(next_beams,     15).
 girder_lengths(next_beams,     17).
 girder_lengths(next_beams,     19).
 girder_lengths(steel_beams,    20).
+girder_lengths(steel_beams,    22.5).
 girder_lengths(steel_beams,    25).
+girder_lengths(steel_beams,    27.5).
 girder_lengths(steel_beams,    30).
+girder_lengths(steel_beams,    32.5).
 girder_lengths(steel_beams,    35).
+girder_lengths(steel_beams,    37.5).
 girder_lengths(steel_beams,    40).
 
 % ============================================================
