@@ -223,13 +223,17 @@ price_solution(solution(_N, PropElem, _BL, GirderType, SpanLengths, Piers),
     price_pier(Piers, RW, PierItem),
     % assemble
     append([GirderItem | ElemItems], [PierItem], PricedItems),
-    % sum costs
-    findall(C, member(priced(_, _, C), PricedItems), Costs),
-    sum_spans(Costs, TotalCost).
+    sum_priced(PricedItems, TotalCost).
+
+% sum_priced(+PricedItems, -Total)
+sum_priced([], 0).
+sum_priced([priced(_, _, C) | T], Total) :-
+    sum_priced(T, T1),
+    Total is T1 + C.
 
 % solution_cost/2 — backward-compatible wrapper
 solution_cost(Sol, TotalCost) :-
-    price_solution(Sol, _, TotalCost). 
+    price_solution(Sol, _, TotalCost).
 
 % ============================================================
 % Solution Printing

@@ -1,5 +1,4 @@
 % abut_soil_config_8
-%['C:/Users/rerfani/Documents/Prolog/abutment config 2023-03-02 - Claude/abut_soil_config_5'].
 % Abutment soil configuration module.
 % Builds a geometric profile from soil strata and sizes retaining elements.
 %
@@ -34,7 +33,6 @@ strip_keys([_-V | T], [V | TT]) :-
 % Collect soil/3 facts with Elev > bottom elevation, sort ascending (bottom to top).
 % If no soil facts exist yet, generate them from soil_log/3 data.
 build_list(L) :-
-    %( soil(_, _, _) -> true ; assert_soil_from_logs ),
     bottom(BottomElev),
     findall(Elev-soil(Type, Density, Elev),
             (soil(Type, Density, Elev), Elev > BottomElev),

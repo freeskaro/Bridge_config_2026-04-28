@@ -17,7 +17,7 @@
 soil_log1(gravel, loose,  100.0).
 soil_log1(gravel, loose,   97.0).
 soil_log1(gravel, medium,  95.5).
-soil_log1(gravel, dense,   93.0).
+soil_log1(gravel, medium,   93.0).
 soil_log1(rock,   sound,   90.0).
 
 % ============================================================
