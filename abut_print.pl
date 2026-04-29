@@ -46,12 +46,6 @@ print_elem_line(elem(piles, RowCounts, Spacings, _, _, _, _)) :-
     format("  - piles:~n"),
     print_pile_rows(1, RowCounts, Spacings).
 
-print_pile_rows(_, [], _).
-print_pile_rows(I, [N|Ns], [X|Xs]) :-
-    format("      row ~w: ~w piles at ~2f m~n", [I, N, X]),
-    I1 is I + 1,
-    print_pile_rows(I1, Ns, Xs).
-
 % Embankment: no B
 print_elem_line(elem(embankment, _, BotElev, _, TopElev, _, _)) :-
     format("  - embankment: elev ~2f to ~2f m~n", [BotElev, TopElev]).
@@ -71,6 +65,12 @@ print_elem_line(elem(Type, _, BotElev, _, TopElev, B, _)) :-
     Type \== sheet_piling, Type \== rip_rap,
     format("  - ~w: elev ~1f to ~1f m, B = ~2f m~n",
            [Type, BotElev, TopElev, B]).
+
+print_pile_rows(_, [], _).
+print_pile_rows(I, [N|Ns], [X|Xs]) :-
+    format("      row ~w: ~w piles at ~2f m~n", [I, N, X]),
+    I1 is I + 1,
+    print_pile_rows(I1, Ns, Xs).
 
 % ============================================================
 % Solution Reporting

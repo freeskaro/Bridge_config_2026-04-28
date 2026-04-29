@@ -44,7 +44,7 @@ span_config(1, BridgeLength, GirderType, [L], 0) :-
     once((girder_lengths(GirderType, L), L >= BridgeLength, L < BridgeLength + 3)).
 
 span_config(2, BridgeLength, GirderType, [L, L], 1) :-
-    girder_type(GirderType)
+    girder_type(GirderType),
     once((girder_lengths(GirderType, L), 2*L >= BridgeLength, 2*L < BridgeLength + 3)).
 
 % 3-span symmetric: L1, L2, L1

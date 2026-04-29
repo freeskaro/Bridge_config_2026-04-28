@@ -80,15 +80,14 @@ wall_cost_props(stub_abutment,    volume, 1700). % incl. ~$500/m³ for reinforci
 wall_cost_props(timber_crib,      volume, 2000). % MTQ liste de prix — steel + timber
 wall_cost_props(mse_wall,         area,   1200). % CAD estimate
 wall_cost_props(gabion_block,     area,   1000). % CAD estimate
+wall_cost_props(sheet_piling,     area,    600). % $/m² face area (supply + drive)
+wall_cost_props(rip_rap,          area,    150). % $/m² plan area (supply + place)
 
 % ============================================================
 % Pile Foundation Cost
 % ============================================================
 
 pile_cost_each(6000).   % $ per pile (supply + drive)
-
-wall_cost_props(sheet_piling, area,  600). % $/m² face area (supply + drive)
-wall_cost_props(rip_rap,      area,  150). % $/m² plan area (supply + place)
 
 % ============================================================
 % Superstructure Loads
