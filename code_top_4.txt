@@ -1,0 +1,57 @@
+=== 1-span | 16.2 m | next_beams ===
+  Abutment style: earth_retaining (concrete_gravity)
+  Spans (m): [17]
+  Piers: none
+  --- Cost Breakdown ---
+    girders (next_beams, 4/span, 17.0 m total)  $340 000
+    retainment wall (concrete_gravity, H=9.3 m, B=6.3 m)  $1 999 965
+    other  $0
+    piers (0 x pipe_pile_bent)  $0
+  
+  TOTAL:  $2 339 965
+Elements:
+  - retainment: elev 91.0 to 100.3 m, B = 6.32 m
+  - bearing_x: elev 98.8 to 100.3 m, B = 0.00 m
+
+=== 1-span | 18.9 m | next_beams ===
+  Abutment style: earth_retaining (gabion_block)
+  Spans (m): [19]
+  Piers: none
+  --- Cost Breakdown ---
+    girders (next_beams, 4/span, 19.0 m total)  $380 000
+    retainment wall (gabion_block, H=6.2 m, B=2.6 m)  $124 000
+    embankment (H=1.5 m)  $900
+    stub abutment (H=2.2 m, B=2.1 m)  $156 539
+    piles (12 piles x2 abuts)  $144 000
+    piers (0 x pipe_pile_bent)  $0
+  
+  TOTAL:  $805 439
+Elements:
+  - retainment: elev 92.6 to 98.8 m, B = 2.55 m
+  - embankment: elev 98.80 to 100.30 m
+  - stub_abutment: elev 96.6 to 98.8 m, B = 2.06 m
+  - piles:
+      row 1: 6 piles at 0.45 m
+      row 2: 6 piles at 1.61 m
+
+̀=== 1-span | 18.9 m | next_beams ===
+  Abutment style: earth_retaining (mse_wall)
+  Spans (m): [19]
+  Piers: none
+  --- Cost Breakdown ---
+    girders (next_beams, 4/span, 19.0 m total)  $380 000
+    retainment wall (mse_wall, H=6.2 m, B=2.6 m)  $148 800
+    embankment (H=1.5 m)  $900
+    stub abutment (H=2.2 m, B=2.1 m)  $156 539
+    piles (12 piles x2 abuts)  $144 000
+    piers (0 x pipe_pile_bent)  $0
+  
+  TOTAL:  $830 239
+Elements:
+  - retainment: elev 92.6 to 98.8 m, B = 2.55 m
+  - embankment: elev 98.80 to 100.30 m
+  - stub_abutment: elev 96.6 to 98.8 m, B = 2.06 m
+  - piles:
+      row 1: 6 piles at 0.45 m
+      row 2: 6 piles at 1.61 m
+

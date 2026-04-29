@@ -1,0 +1,153 @@
+% Consult the file first, then run any of these:
+['C:/Users/rerfani/Documents/Prolog/abutment config 2026-04-04 - Claude/prolog_bridge_config']
+
+% --- Run everything and print all solutions ---
+?- solve_all(S), print_all_solutions(S).
+
+% --- Count how many solutions exist ---
+?- solve_all(S), length(S, N).
+
+% --- Compute cost for every solution, sorted cheapest first ---
+?- solve_all(S),
+   maplist([Sol, Cost-Sol]>>(solution_cost(Sol, Cost)), S, Pairs),
+   msort(Pairs, Sorted),
+   maplist([C-Sol]>>(solution_cost(Sol, C), print_solution(Sol)), Sorted).
+
+% --- Inspect one solution term directly ---
+?- solve_one(Sol), print_solution(Sol), !.
+
+% --- All 2-span solutions only ---
+?- solve_all(S),
+   include([solution(2,_,_,_,_,_)]>>true, S, TwoSpan),
+   print_all_solutions(TwoSpan).
+
+% --- Bridge lengths across all solutions ---
+?- solve_all(S),
+   maplist([solution(_,_,L,_,_,_)]>>(format("~1f m~n",[L])), S).
+
+% 2 cheapest solutions
+?- solve_all(S),
+   maplist([Sol, Cost-Sol]>>(solution_cost(Sol, Cost)), S, Pairs),
+   msort(Pairs, Sorted),
+   length(Top5, 2),
+   append(Top5, _, Sorted),
+   maplist([_-Sol]>>print_solution(Sol), Top5).
+If fewer than 5 solutions exist, use length(Sorted, Len), N is min(Len, 5) to be safe:
+
+
+?- solve_all(S),
+   maplist([Sol, Cost-Sol]>>(solution_cost(Sol, Cost)), S, Pairs),
+   msort(Pairs, Sorted),
+   length(Sorted, Len), N is min(Len, 5),
+   length(Top5, N),
+   append(Top5, _, Sorted),
+   maplist([_-Sol]>>print_solution(Sol), Top5).
+
+
+   a query to provide the 5 cheapest solution. 1 on the solutions must include a concrete gravity retaining wall
+
+   ?- solve_all(S),
+   % separate concrete_gravity from everything else
+   include([solution(_, PE, _, _, _, _)]>>(
+       abutment_style(PE, earth_retaining, concrete_gravity)), S, CG),
+   exclude([solution(_, PE, _, _, _, _)]>>(
+       abutment_style(PE, earth_retaining, concrete_gravity)), S, Rest),
+   % require at least one CG solution exists
+   ( CG = [] ->
+       writeln('No concrete gravity solutions found.'), fail
+   ; true ),
+   % cost-sort both groups
+   maplist([Sol, C-Sol]>>(solution_cost(Sol, C)), CG,   CGPairs),
+   maplist([Sol, C-Sol]>>(solution_cost(Sol, C)), Rest, RestPairs),
+   msort(CGPairs,  [BestCG | _]),       % cheapest concrete gravity
+   msort(RestPairs, RestSorted),
+   % cheapest 4 from remaining solutions
+   length(RestSorted, RL), N is min(RL, 4),
+   length(Top4, N),
+   append(Top4, _, RestSorted),
+   % combine and sort final 5 by cost
+   msort([BestCG | Top4], Final),
+   maplist([_-Sol]>>print_solution(Sol), Final).
+
+
+### all solution of concrete wall and 1 span
+?- solve_all(Solutions),
+   include(
+       [Sol]>>(
+           Sol = solution(1, PropElem, _, _, _, _),
+           member(elem(retainment, _, BotElev, _, TopElev, _, concrete_gravity), PropElem),
+           H is TopElev - BotElev,
+           abs(H - 9.3) < 0.01
+       ),
+       Solutions,
+       Matching),
+   print_all_solutions(Matching).
+
+solve_all(Solutions),
+   include(
+       [Sol]>>(
+           Sol = solution(1, PropElem, _, _, _, _),
+           member(elem(retainment, _, BotElev, _, TopElev, _, concrete_gravity), PropElem)
+
+       ),
+       Solutions,
+       Matching),
+   print_all_solutions(Matching).
+
+### cheapest with these parametwere
+
+solve_all(Solutions),
+   include(
+       [Sol]>>(
+           Sol = solution(1, PropElem, _, _, _, _),
+           member(elem(retainment, _, _BotElev, _, _TopElev, _, mse_wall), PropElem)
+       ),
+       Solutions,
+       Matching),
+   maplist([S, C-S]>>(solution_cost(S, C)), Matching, Pairs),
+   msort(Pairs, [_-Best | _]),
+   print_solution(Best).
+
+### 2 sapn spill thru
+
+solve_all(Solutions),
+   include(
+       [Sol]>>(
+           Sol = solution(2, PropElem, _, _, _, _),
+           \+ member(elem(retainment, _, _, _, _, _, _), PropElem)
+       ),
+       Solutions,
+       Matching),
+   print_all_solutions(Matching).
+
+### 4 tailored solutions
+
+?- solve_all(Solutions),
+
+   % 1 — cheapest overall
+   maplist([S, C-S]>>(solution_cost(S, C)), Solutions, AllPairs),
+   msort(AllPairs, [_-Best1 | _]),
+
+   % 2 — cheapest 1-span concrete gravity wall
+   include([S]>>(S = solution(1, PE, _, _, _, _),
+                 member(elem(retainment,_,_,_,_,_,concrete_gravity), PE)),
+           Solutions, CG1),
+   maplist([S, C-S]>>(solution_cost(S, C)), CG1, CG1Pairs),
+   msort(CG1Pairs, [_-Best2 | _]),
+
+   % 3 — cheapest spill-through (any spans)
+   include([S]>>(S = solution(_, PE, _, _, _, _),
+                 \+ member(elem(retainment,_,_,_,_,_,_), PE)),
+           Solutions, ST),
+   maplist([S, C-S]>>(solution_cost(S, C)), ST, STPairs),
+   msort(STPairs, [_-Best3 | _]),
+
+   % 4 — cheapest spill-through 2-span
+   include([S]>>(S = solution(2, PE, _, _, _, _),
+                 \+ member(elem(retainment,_,_,_,_,_,_), PE)),
+           Solutions, ST2),
+   maplist([S, C-S]>>(solution_cost(S, C)), ST2, ST2Pairs),
+   msort(ST2Pairs, [_-Best4 | _]),
+
+   print_all_solutions([Best1, Best2, Best3, Best4]).
+

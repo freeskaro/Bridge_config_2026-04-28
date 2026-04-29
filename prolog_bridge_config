@@ -252,6 +252,20 @@ solution_cost(Sol, TotalCost) :-
 % Solution Printing
 % ============================================================
 
+% scour_label(+PropElem, -Label)
+% Derives a scour protection label from the elements present in PropElem.
+scour_label(PropElem, Label) :-
+    ( member(elem(sheet_piling, _, _, _, _, _, _), PropElem) ->
+        Label = 'scour: sheet piling + rip rap'
+    ; member(elem(rip_rap, _, _, _, _, _, _), PropElem),
+      member(elem(retainment, _, _, _, _, _, _), PropElem) ->
+        Label = 'scour: extended wall + rip rap'
+    ; member(elem(rip_rap, _, _, _, _, _, _), PropElem) ->
+        Label = 'scour: rip rap on embankment'
+    ;
+        Label = ''
+    ).
+
 % print_priced_items(+PricedItems, +RunningTotal, -FinalTotal)
 print_priced_items([], Total, Total).
 print_priced_items([priced(_, Label, Cost) | Rest], Acc, Final) :-
@@ -263,12 +277,21 @@ print_priced_items([priced(_, Label, Cost) | Rest], Acc, Final) :-
 print_solution(Sol) :-
     Sol = solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers),
     abutment_style(PropElem, AbutStyle, WallType),
+    scour_label(PropElem, ScourLabel),
     price_solution(Sol, PricedItems, TotalCostRaw),
     TotalCost is round(TotalCostRaw),
     Piers = piers(NP, _, PH, _, _),
-    format("~n=== ~w-span | ~1f m | ~w ===~n",
-           [N, BridgeLength, GirderType]),
+    ( ScourLabel == '' ->
+        format("~n=== ~w-span | ~1f m | ~w ===~n",
+               [N, BridgeLength, GirderType])
+    ;
+        format("~n=== ~w-span | ~1f m | ~w | ~w ===~n",
+               [N, BridgeLength, GirderType, ScourLabel])
+    ),
     format("  Abutment style: ~w (~w)~n", [AbutStyle, WallType]),
+    ( ScourLabel \== '' ->
+        format("  Scour protection: ~w~n", [ScourLabel])
+    ; true ),
     format("  Spans (m): ~w~n", [SpanLengths]),
     ( NP =:= 0 ->
         format("  Piers: none~n")
