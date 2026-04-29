@@ -277,52 +277,6 @@ compile_layers([[Elev, AType] | Rest], open(EType, TopElev), Acc, Elems) :-
 
 % ============================================================
 % Scour Protection Helpers
-<<<<<<< HEAD
-=======
-% ============================================================
-
-% is_pure_spill_through(+Acc)
-% True when no retainment element has been accumulated yet —
-% i.e. configuration is embankment + stub only, with no wall below.
-is_pure_spill_through(Acc) :-
-    \+ member(elem(retainment, _, _, _, _, _, _), Acc).
-
-% sheet_pile_elem(+BotX, +RiverbedElev, -Elem)
-sheet_pile_elem(BotX, RiverbedElev,
-                elem(sheet_piling, BotX, BotElev, BotX, RiverbedElev, 0, none)) :-
-    sheet_pile_depth(D),
-    BotElev is RiverbedElev - D.
-
-% rip_rap_elem(+RefX, +RiverbedElev, -Elem)
-rip_rap_elem(RefX, RiverbedElev,
-             elem(rip_rap, RefX, RiverbedElev, RefX, RiverbedElev, Extent, none)) :-
-    rip_rap_extent(Extent).
-
-% scour_mitigation(+BotElev, +BottomElev, +AdjBotX, +AdjBotElev,
-%                  -DesignBotElev, -ScourElems)
-%
-% No-op when not a river, or wall base is above riverbed.
-% For a concrete gravity wall at/below the riverbed, backtracks over two choices:
-%   Choice 1 — extend pile cap to scour_depth below riverbed + rip rap.
-%   Choice 2 — sheet piling to sheet_pile_depth below riverbed + rip rap.
-
-scour_mitigation(BotElev, BottomElev, _, AdjBotElev, AdjBotElev, []) :-
-    ( \+ obstacle_type(river) ; BotElev > BottomElev ), !.
-
-scour_mitigation(_, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, [RipRapElem]) :-
-    obstacle_type(river),
-    scour_depth(SD),
-    DesignBotElev is min(AdjBotElev, BottomElev - SD),
-    rip_rap_elem(AdjBotX, BottomElev, RipRapElem).
-
-scour_mitigation(_, BottomElev, AdjBotX, AdjBotElev, AdjBotElev, [SheetElem, RipRapElem]) :-
-    obstacle_type(river),
-    sheet_pile_elem(AdjBotX, BottomElev, SheetElem),
-    rip_rap_elem(AdjBotX, BottomElev, RipRapElem).
-
-% ============================================================
-% Retaining Wall Sizing
->>>>>>> 288e7e8359c5b758ac6cae2ea8cad748f5a614cc
 % ============================================================
 
 % is_pure_spill_through(+Acc)
@@ -442,7 +396,6 @@ design_elems([elem(retainment, _, BotElev, _, TopElev, _, none) | Rest], CurrX, 
             AdjBotX    = CurrX,                                     %if gravity wall is below riverbed
             AdjBotElev is BotElev - Df
         ),
-<<<<<<< HEAD
         % Apply scour mitigation for river crossings at or below riverbed.
         % Backtracks over two choices: extend wall vs. sheet piling + rip rap.
         scour_mitigation(BotElev, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, ScourElems)
@@ -461,117 +414,6 @@ design_elems([elem(retainment, _, BotElev, _, TopElev, _, none) | Rest], CurrX, 
         BxBotElev is SurfaceElev - DepthFromRatio,
         BearXElem = elem(bearing_x, BxBotX, BxBotElev, BxBotX, SurfaceElev, 0, none),
         BaseAcc = [BearXElem, Processed | Acc]
-=======
-        % Scour mitigation: no-op for non-river or wall above riverbed;
-        % for river at riverbed, backtracks over extend-depth vs sheet-piling.
-        Dbx is 0.6,
-        scour_mitigation(BotElev, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, ScourElems),
-        AdjHead = elem(Elem, AdjBotX, DesignBotElev, TopX, TopElev, _, WallType),
-
-        % Piles mandatory for gravity walls at river riverbed; footing-first elsewhere.
-        ( obstacle_type(river), BotElev =< BottomElev ->
-            allow_embankment_at_river,
-            WallType = concrete_gravity,
-            H is TopElev - DesignBotElev,
-            pile_fallback(Above, H, _B, Below, DesignBotElev, BLoad, Dbx,
-                          AdjHead, WallType, Processed, PilesElem)
-        ;
-            allowable_settlement_for_wall(WallType, AllowS),
-            wall_design_or_piles(Above, _H, _B, _W, _E, AdjHead, Below, AllowS, BLoad, Dbx, Processed, PilesElem)
-        ),
-
-        % update element description array
-        % append a bearing_x element to description to calculate length
-        % a bearing "element" with seat below girder level at the base X - 0.6 m.
-        initial_depth(_,DepthFromRatio),
-
-        Processed = elem(_, ProcBotX, _, _, _, _, _),
-        ( TopElev  =:= SurfaceElev ->
-            BxBotX    is ProcBotX - 0.6,
-            BxBotElev is SurfaceElev - DepthFromRatio,
-            BearXElem = elem(bearing_x, BxBotX, BxBotElev, BxBotX, SurfaceElev, 0, none),
-            NewAcc0 = [BearXElem, Processed | Acc]                                  %update element record
-        ;
-            NewAcc0 = [Processed | Acc]
-        ),
-        % If piles were required, prepend the piles element so it follows
-        % the wall body in the final (reversed) PropElem list.
-        ( PilesElem \== none ->
-            NewAcc1 = [PilesElem | NewAcc0]
-        ;
-            NewAcc1 = NewAcc0
-        ),
-        % Append scour elements (rip rap and/or sheet piling) after wall and piles.
-        append(ScourElems, NewAcc1, NewAcc),
-        % Propagate designed back face to embankment directly above, then stub abutment.
-        % Embankment: BotX = retainment back face; TopX = BotX - 2 * height (1:2 slope).
-        % Stub:       BearingX shifts by same delta as embankment TopX.
-        Processed = elem(_, _, _, ProcTopX, _, _, _),
-        ( Tail = [elem(embankment, _, EBotElev, ETopX, ETopElev, _, EWT) | TailRest] ->
-            EHeight    is ETopElev - EBotElev,
-            NewEBotX   is ProcTopX,
-            NewETopX   is ProcTopX - 2 * EHeight,
-            EB         is abs(NewETopX - NewEBotX),
-            UpdatedEmb = elem(embankment, NewEBotX, EBotElev, NewETopX, ETopElev, EB, EWT),
-            % Shift stub abutment by the same delta applied to embankment TopX.
-            ( TailRest = [elem(stub_abutment, SBotX, SBotElev, STopX, STopElev, SB, SWT) | TailRest2] ->
-                OrigBearingX is (SBotX + STopX) / 2,
-                BearingOffset is OrigBearingX - ETopX,
-                NewBearingX  is NewETopX + BearingOffset,
-                NewSBotX     is NewBearingX + 0.6,
-                NewSTopX     is NewBearingX - 0.6,
-                UpdatedStub  = elem(stub_abutment, NewSBotX, SBotElev, NewSTopX, STopElev, SB, SWT),
-                NewTail = [UpdatedEmb, UpdatedStub | TailRest2]
-            ;
-                NewTail = [UpdatedEmb | TailRest]
-            )
-        ;
-            NewTail = Tail
-        ),
-        design_retain_aux(NewTail, NewAcc, Result)
-
-    ; Elem == stub_abutment ->
-        ( Tail == []        -> Above = none
-        ; Tail = [Next | _], Above = Next
-        ),
-        % Stub abutments are always concrete gravity; frost already in BotElev.
-        allowable_settlement_for_wall(concrete_gravity, AllowS),
-        bearing_x_load(BLoad),
-        StubHead = elem(Elem, BotX, BotElev, TopX, TopElev, _, concrete_gravity),
-        Dbx is -10,
-        % At a river crossing, piles are mandatory on stub abutments.
-        ( obstacle_type(river) ->
-            allow_embankment_at_river,
-            SH is TopElev - BotElev,
-            pile_fallback(Above, SH, _SB, Below, BotElev, BLoad, Dbx,
-                          StubHead, concrete_gravity, RawProcessed, PilesElem)
-        ;
-            wall_design_or_piles(Above, _H, _B, _W, _E,
-                                 StubHead, Below, AllowS, BLoad, Dbx, RawProcessed, PilesElem)
-        ),
-        % Centre the stub symmetrically on the bearing centreline.
-        RawProcessed = elem(stub_abutment, _, PBotElev, _, PTopElev, PB, PWT),
-        BearingX is (BotX + TopX) / 2,
-        PBotX is BearingX + PB / 2,
-        PTopX is BearingX - PB / 2,
-        Processed = elem(stub_abutment, PBotX, PBotElev, PTopX, PTopElev, PB, PWT),
-        ( PilesElem \== none ->
-            NewAcc1 = [PilesElem, Processed | Acc]
-        ;
-            NewAcc1 = [Processed | Acc]
-        ),
-        % For pure spill-through at a river, add rip rap on embankment slopes.
-        % Partial-height wall configs already have rip rap from the retainment branch.
-        ( obstacle_type(river), is_pure_spill_through(Acc) ->
-            bottom(RiverbedElev),
-            rip_rap_elem(PBotX, RiverbedElev, RipRapElem),
-            NewAcc = [RipRapElem | NewAcc1]
-        ;
-            NewAcc = NewAcc1
-        ),
-        design_retain_aux(Tail, NewAcc, Result)
-
->>>>>>> 288e7e8359c5b758ac6cae2ea8cad748f5a614cc
     ;
         BaseAcc = [Processed | Acc]
     ),
@@ -673,20 +515,12 @@ print_pile_rows(I, [N|Ns], [X|Xs]) :-
 print_elem_line(elem(embankment, _, BotElev, _, TopElev, _, _)) :-
     format("  - embankment: elev ~2f to ~2f m~n", [BotElev, TopElev]).
 
-<<<<<<< HEAD
 % Sheet piling: elem(sheet_piling, BotX, BotElev, BotX, TopElev, 0, none)
-=======
-% Sheet piling: show depth and elevation range
->>>>>>> 288e7e8359c5b758ac6cae2ea8cad748f5a614cc
 print_elem_line(elem(sheet_piling, _, BotElev, _, TopElev, _, _)) :-
     H is TopElev - BotElev,
     format("  - sheet piling: depth ~1f m (elev ~1f to ~1f m)~n", [H, BotElev, TopElev]).
 
-<<<<<<< HEAD
 % Rip rap: elem(rip_rap, RefX, RiverbedElev, RefX, RiverbedElev, Extent, none)
-=======
-% Rip rap: show extent and riverbed elevation
->>>>>>> 288e7e8359c5b758ac6cae2ea8cad748f5a614cc
 print_elem_line(elem(rip_rap, _, BotElev, _, _, Extent, _)) :-
     format("  - rip rap: ~1f m extent at riverbed elev ~1f m~n", [Extent, BotElev]).
 

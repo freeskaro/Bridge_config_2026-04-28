@@ -117,9 +117,4 @@ obstacle_type(river).           % river / road / railway
 scour_depth(1.5).               % scour depth below riverbed (m)
 sheet_pile_depth(4.0).          % sheet pile penetration below riverbed (m)
 rip_rap_extent(5.0).            % rip rap extent from wall face (m)
-<<<<<<< HEAD
 allow_spill_through_at_river.   % permit spill-through at river crossings
-=======
-allow_embankment_at_river.      % enables spill-through and partial-height gravity walls;
-                                % piles + rip rap required on all elements at riverbed
->>>>>>> 288e7e8359c5b758ac6cae2ea8cad748f5a614cc
