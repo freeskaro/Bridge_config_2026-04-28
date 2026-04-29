@@ -33,6 +33,8 @@ girder_lengths(steel_beams,    32.5).
 girder_lengths(steel_beams,    35).
 girder_lengths(steel_beams,    37.5).
 girder_lengths(steel_beams,    40).
+girder_lengths(steel_beams,    41).
+girder_lengths(steel_beams,    42).
 
 % ============================================================
 % Girder Section Properties
@@ -77,6 +79,9 @@ wall_cost_props(gabion_block,     area,   1000). % CAD estimate
 % ============================================================
 
 pile_cost_each(6000).   % $ per pile (supply + drive)
+
+wall_cost_props(sheet_piling, area,  600). % $/m² face area (supply + drive)
+wall_cost_props(rip_rap,      area,  150). % $/m² plan area (supply + place)
 
 % ============================================================
 % Superstructure Loads

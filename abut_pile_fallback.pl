@@ -52,7 +52,7 @@ wall_design_or_piles(Above, H, B, W, E,
     ( design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx,
                   B, E, AllowS)
     ->  % Footing solution found — build Processed directly from already-bound outputs.
-        ( WallType == mse_wall -> X2 is BotX - 1.5 ; X2 is BotX - B ),
+        ( wall_back_offset(WallType, X2off) -> X2 is BotX - X2off ; X2 is BotX - B ),
         Processed = elem(Elem, BotX, BotElev, X2, TopElev, B, WallType),
         PilesElem = none
 
@@ -143,9 +143,12 @@ pile_fallback(Above, H, B, Below, BotElev, BearingLoad, Dbx,
 
 best_pile_config(B, Pcf,  Mcf, Vcf,
                  Rows, X1, X2, X3, N1, N2, N3, P1, P2, P3, Hi, MinNt) :-
-    aggregate_all(min(Nt-P1v),
-        check_pile_config(B, Pcf, Mcf, Vcf, _,_,_,_,_,_,_,P1v,_,_,_,Nt),
-        MinNt-MinP1),
+    aggregate_all(min(Nt),
+        check_pile_config(B, Pcf, Mcf, Vcf, _,_,_,_,_,_,_,_,_,_,_,Nt),
+        MinNt),
+    aggregate_all(min(P1v),
+        check_pile_config(B, Pcf, Mcf, Vcf, _,_,_,_,_,_,_,P1v,_,_,_,MinNt),
+        MinP1),
     check_pile_config(B, Pcf, Mcf, Vcf,
                       Rows, X1, X2, X3, N1, N2, N3, P1, P2, P3, Hi, MinNt),
     P1 =:= MinP1,

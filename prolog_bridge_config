@@ -106,10 +106,10 @@ solve_one(solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers)) :
     % --- abutment geometry (backtracks over slope/confined combos) ---
     build_list(LayerList),
     bottom(BottomElev),
-    iter_depth(LayerList, BottomElev, 0, none, [[0, BottomElev, bottom]],
+    iter_depth(LayerList, BottomElev, none, [[BottomElev, bottom]],
                Profile, _, _),
-    compile_elements(Profile, DepthFromRatio, _, _, AbutElem),
-    design_retain(AbutElem, PropElem),
+    compile_elements(Profile, DepthFromRatio, AbutElem),
+    design_elements(AbutElem, PropElem),
     % --- bridge length from designed geometry ---
     bridge_length(PropElem, BridgeLength),
     % --- superstructure (voided_precast tried first) ---
@@ -185,6 +185,19 @@ price_element(Elem, RW, priced(Elem, Label, Cost)) :-
     H is TopElev - BotElev,
     Cost is 2 * 30 * RW * H,
     format(atom(Label), "embankment (H=~1f m)", [H]).
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(sheet_piling, _, BotElev, _, TopElev, _, _), !,
+    wall_cost_props(sheet_piling, area, Rate),
+    H is TopElev - BotElev,
+    Cost is 2 * H * RW * Rate,
+    format(atom(Label), "sheet piling (H=~1f m)", [H]).
+
+price_element(Elem, RW, priced(Elem, Label, Cost)) :-
+    Elem = elem(rip_rap, _, _, _, _, Extent, _), !,
+    wall_cost_props(rip_rap, area, Rate),
+    Cost is 2 * Extent * RW * Rate,
+    format(atom(Label), "rip rap (~1f m extent)", [Extent]).
 
 price_element(Elem, _RW, priced(Elem, other, 0)).
 

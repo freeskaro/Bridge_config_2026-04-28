@@ -57,6 +57,7 @@ retaining_wall_type(concrete_gravity).
 retaining_wall_type(mse_wall).
 retaining_wall_type(timber_crib).
 retaining_wall_type(gabion_block).
+retaining_wall_type(sheet_piling).
 
 % Wall types permitted when retainment reaches surface (integral abutment)
 wall_type_at_surface(concrete_gravity).
@@ -67,12 +68,31 @@ frost_depth_for_wall(concrete_gravity, Df) :- frost_depth(Df).
 frost_depth_for_wall(mse_wall,         0.4).
 frost_depth_for_wall(timber_crib,      0.4).
 frost_depth_for_wall(gabion_block,     0.4).
+frost_depth_for_wall(sheet_piling,     0.4).
 
 % Allowable settlement per wall type (mm)
 allowable_settlement_for_wall(concrete_gravity, 25).
 allowable_settlement_for_wall(mse_wall,         50).
 allowable_settlement_for_wall(timber_crib,      50).
 allowable_settlement_for_wall(gabion_block,     50).
+allowable_settlement_for_wall(sheet_piling,     50).
+
+% Fixed back-face offset (m) — walls where the back face is not equal to base width B.
+% Absence of a fact means use full base width B.
+wall_back_offset(mse_wall,     1.5).
+wall_back_offset(sheet_piling, 1.5).
+
+% Pile foundation fallback is permitted only for the listed wall types.
+wall_pile_fallback(concrete_gravity).
+
+% Minimum base depth below the project bottom elevation (m).
+% Walls with this fact use penetration depth instead of frost adjustment.
+% Walls without this fact use frost_depth_for_wall for base geometry.
+wall_penetration_depth(sheet_piling, 4.0).
+
+% Walls that serve as their own scour protection.
+% Only rip rap is added as a supplementary scour element.
+wall_is_scour_protection(sheet_piling).
 
 % ============================================================
 % Pile Design Parameters
@@ -88,3 +108,13 @@ x1min(0.450).               % minimum front-edge pile offset from cap edge (m)
 n1_range([4,6,8,10,12,14]). % candidate pile counts for row 1
 n2_range([4,6,8,10,12]).    % candidate pile counts for row 2
 n3_range([4,6,8,10,12]).    % candidate pile counts for row 3
+
+% ============================================================
+% Obstacle Type and Scour Parameters
+% ============================================================
+
+obstacle_type(river).           % river / road / railway
+scour_depth(1.5).               % scour depth below riverbed (m)
+sheet_pile_depth(4.0).          % sheet pile penetration below riverbed (m)
+rip_rap_extent(5.0).            % rip rap extent from wall face (m)
+allow_spill_through_at_river.   % permit spill-through at river crossings
