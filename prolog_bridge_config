@@ -40,22 +40,18 @@ compute_bearing_for_nspan(N, BridgeLength0, BearingElev, DepthFromRatio, Surface
 % ============================================================
 
 span_config(1, BridgeLength, GirderType, [L], 0) :-
-    girder_lengths(GirderType, L),
-    L >= BridgeLength,
-    L < BridgeLength + 3.
+    girder_type(GirderType),
+    once((girder_lengths(GirderType, L), L >= BridgeLength, L < BridgeLength + 3)).
 
 span_config(2, BridgeLength, GirderType, [L, L], 1) :-
-    girder_lengths(GirderType, L),
-    2 * L >= BridgeLength,
-    2 * L < BridgeLength + 3.
+    girder_type(GirderType)
+    once((girder_lengths(GirderType, L), 2*L >= BridgeLength, 2*L < BridgeLength + 3)).
 
 % 3-span symmetric: L1, L2, L1
 span_config(3, BridgeLength, GirderType, [L1, L2, L1], 2) :-
-    girder_lengths(GirderType, L1),
-    girder_lengths(GirderType, L2),
-    L2 >= L1,
-    2 * L1 + L2 >= BridgeLength,
-    2 * L1 + L2 < BridgeLength + 3.
+    girder_type(GirderType),
+    once((girder_lengths(GirderType, L1), girder_lengths(GirderType, L2),
+          L2 >= L1, 2*L1+L2 >= BridgeLength, 2*L1+L2 < BridgeLength + 3)).
 
 sum_spans([], 0).
 sum_spans([H | T], S) :- sum_spans(T, S1), S is S1 + H.
@@ -266,45 +262,3 @@ scour_label(PropElem, Label) :-
         Label = ''
     ).
 
-% print_priced_items(+PricedItems, +RunningTotal, -FinalTotal)
-print_priced_items([], Total, Total).
-print_priced_items([priced(_, Label, Cost) | Rest], Acc, Final) :-
-    CostR is round(Cost),
-    format("    ~w  $~:d~n", [Label, CostR]),
-    Acc2 is Acc + Cost,
-    print_priced_items(Rest, Acc2, Final).
-
-print_solution(Sol) :-
-    Sol = solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers),
-    abutment_style(PropElem, AbutStyle, WallType),
-    scour_label(PropElem, ScourLabel),
-    price_solution(Sol, PricedItems, TotalCostRaw),
-    TotalCost is round(TotalCostRaw),
-    Piers = piers(NP, _, PH, _, _),
-    ( ScourLabel == '' ->
-        format("~n=== ~w-span | ~1f m | ~w ===~n",
-               [N, BridgeLength, GirderType])
-    ;
-        format("~n=== ~w-span | ~1f m | ~w | ~w ===~n",
-               [N, BridgeLength, GirderType, ScourLabel])
-    ),
-    format("  Abutment style: ~w (~w)~n", [AbutStyle, WallType]),
-    ( ScourLabel \== '' ->
-        format("  Scour protection: ~w~n", [ScourLabel])
-    ; true ),
-    format("  Spans (m): ~w~n", [SpanLengths]),
-    ( NP =:= 0 ->
-        format("  Piers: none~n")
-    ;
-        format("  Piers: ~w x pipe_pile_bent, height ~1f m~n", [NP, PH])
-    ),
-    format("  --- Cost Breakdown ---~n"),
-    print_priced_items(PricedItems, 0, _),
-    format("  ~n"),
-    format("  TOTAL:  $~:d~n", [TotalCost]),
-    print_solution_summary(PropElem).
-
-print_all_solutions([]).
-print_all_solutions([S | Rest]) :-
-    print_solution(S),
-    print_all_solutions(Rest).

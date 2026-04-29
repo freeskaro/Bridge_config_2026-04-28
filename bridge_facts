@@ -10,8 +10,15 @@
 %   - Substructure and wall cost unit rates
 
 % ============================================================
+% Girder Types  (preferred order — cheapest/simplest first)
+% ============================================================
+
+girder_type(voided_precast).
+girder_type(next_beams).
+girder_type(steel_beams).
+
+% ============================================================
 % Girder Lengths  (m) — available stock lengths per girder type
-% Voided precast listed first so the solver tries it before next_beams/steel.
 % ============================================================
 
 girder_lengths(voided_precast,  8).

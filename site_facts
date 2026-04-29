@@ -94,6 +94,15 @@ wall_penetration_depth(sheet_piling, 4.0).
 % Only rip rap is added as a supplementary scour element.
 wall_is_scour_protection(sheet_piling).
 
+% Scour mitigation methods permitted per wall type at river crossings.
+% extend:     wall base is driven to scour depth below riverbed.
+% sheet_pile: sheet piling added at wall toe; wall base stays at frost depth.
+wall_scour_mitigation(concrete_gravity, extend).
+wall_scour_mitigation(concrete_gravity, sheet_pile).
+wall_scour_mitigation(mse_wall,         sheet_pile).
+wall_scour_mitigation(timber_crib,      sheet_pile).
+wall_scour_mitigation(gabion_block,     sheet_pile).
+
 % ============================================================
 % Pile Design Parameters
 % ============================================================
