@@ -22,7 +22,8 @@
 
 :- use_module('abut_tree_gravity',      [design_wall/10, equilibrium/4,
                                          soil_at_or_above/3, ka/5,
-                                         pa_components/5, eccentricity/7]).
+                                         pa_components/5, eccentricity/7,
+                                         depth_to_rock/2]).
 :- use_module('Abut_tree_footing_def',  [settlement_strip/5]).
 :- use_module('CFEM_4th_prolog_qu',     [ultimate_bearing_capacity/8]).
 
@@ -40,25 +41,32 @@
 %     when the pile fallback is used, where RowCounts = [N1], [N1,N2], or [N1,N2,N3]
 %     and Spacings = [X1], [X1,X2], or [X1,X2,X3] (srow X-positions from cap front, m).
 %
-% Pile fallback is only attempted for concrete_gravity walls.
-% For all other wall types, failure here causes the caller to backtrack
-% and try the next wall type from retaining_wall_type/1.
+% Footing and pile foundations are offered as SEPARATE alternatives (via
+% backtracking) rather than the footing unconditionally winning whenever it
+% succeeds at all. A footing can pass every stability/settlement/bearing
+% check yet still need a much wider (and pricier) base than piling would --
+% design_wall/10 has no visibility into cost, so it can't make that call
+% itself. Yielding both candidates lets solve_all's cost-sort (every caller
+% in this project prices and ranks solutions) pick whichever is actually
+% cheaper, instead of always taking the footing. Pile fallback is only
+% ever attempted for concrete_gravity walls; for all other wall types only
+% the footing candidate exists, so failure there still causes the caller
+% to backtrack and try the next wall type from retaining_wall_type/1.
 
 wall_design_or_piles(Above, H, B, W, E,
                      Curr, Below, AllowS, BearingLoad, Dbx, Processed, PilesElem) :-
     Curr = elem(Elem, BotX, BotElev, TopX, TopElev, _, WallType),
     H is TopElev - BotElev,
-
-    ( design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx,
-                  B, E, AllowS)
-    ->  % Footing solution found — build Processed directly from already-bound outputs.
+    (
+        % Footing candidate.
+        design_wall(Above, Below, TopElev, BotElev, H, BearingLoad, Dbx,
+                    B, E, AllowS),
         ( wall_back_offset(WallType, X2off) -> X2 is BotX - X2off ; X2 is BotX - B ),
         Processed = elem(Elem, BotX, BotElev, X2, TopElev, B, WallType),
         PilesElem = none
 
-    ;   % Footing failed — pile fallback is only valid for concrete gravity walls.
+    ;   % Pile candidate -- only valid for concrete_gravity walls.
         WallType == concrete_gravity,
-        %format("~n*** Footing failed (S or Qr). Trying pile foundation. ***~n"),
         pile_fallback(Above, H, B, Below, BotElev, BearingLoad, Dbx,
                       Curr, WallType, Processed, PilesElem)
     ).
@@ -125,7 +133,15 @@ pile_fallback(Above, H, B, Below, BotElev, BearingLoad, Dbx,
         ; Rows =:= 2 -> RowCounts = [N1, N2],   Spacings = [X1, X2]
         ;               RowCounts = [N1, N2, N3], Spacings = [X1, X2, X3]
         ),
-        PilesElem = elem(piles, RowCounts, Spacings, none, none, none, none)
+        % Pile length = depth from the cap (BotElev) down to the nearest
+        % logged rock stratum -- i.e. how much soil embedment the pile
+        % actually gets before refusing on rock. Below rock_socket_min_length/1
+        % there isn't enough embedded length left to mobilize lateral
+        % resistance (Hi < Hlat) through passive soil pressure over the
+        % shaft, so the pile must instead be socketed into the rock to get
+        % its lateral fixity there -- priced at rock_socket_cost_multiplier/1.
+        depth_to_rock(BotElev, PileLength),
+        PilesElem = elem(piles, RowCounts, Spacings, PileLength, none, none, none)
     ),
     !.   % commit to first B that yields a pile solution
 
@@ -166,7 +182,7 @@ check_pile_config(B, Pcf, Mcf, Vcf,
     pile_numbers(Rows, N1, N2, N3, Ni1, Ni2, Mcf),
 
     % --- geometry ---
-    pile_spacing(B, Rows, X1, X2raw, X3raw, _Dia),
+    pile_spacing(B, Rows, X1, X2raw, X3raw, Dia),
     (X2raw = none -> X2 = 0.0 ; X2 = X2raw),
     (X3raw = none -> X3 = 0.0 ; X3 = X3raw),
 
@@ -197,13 +213,44 @@ check_pile_config(B, Pcf, Mcf, Vcf,
     ),
 
     % --- capacity checks (fail fast) ---
-    pile_pmax(Pmax), P1 < Pmax, P2 < Pmax,
-    P2> -100, P3 > -100,
+    % P2/P3 are only required positive when that row actually exists --
+    % Rows=1 sets P2=P3=0 and Rows=2 sets P3=0 by construction above (not
+    % under-loaded rows), so checking them here would reject every 1- and
+    % 2-row config regardless of how much margin the real rows have.
+    pile_pmax(Pmax), P1 < Pmax, P2 < Pmax, P3 < Pmax,
+    ( Rows >= 2 -> P2 > 0 ; true ),
+    ( Rows >= 3 -> P3 > 0 ; true ),
 
-    % --- lateral check ---
+    % --- lateral check, reduced for row-to-row spacing group effects ---
     Ht is (P1*Ni1 + P2*Ni2) / Incl,
     Hi is (Vcf - Ht) / Nt,
-    pile_hlat(Hlat), Hi < Hlat.
+    row_spacing_group_multiplier(Rows, X1, X2, X3, Dia, GroupMult),
+    pile_hlat(Hlat0), Hlat is Hlat0 * GroupMult,
+    Hi < Hlat.
+
+
+% ============================================================
+% Row-Spacing Group Effect (lateral resistance)
+% ============================================================
+
+% row_spacing_group_multiplier(+Rows, +X1, +X2, +X3, +Dia, -GroupMult)
+%
+% Closely spaced pile rows shadow one another under lateral load, reducing
+% the group's overall lateral resistance. The governing spacing is the
+% SMALLEST row-to-row spacing present (in pile diameters); that single
+% ratio sets one multiplier applied to the whole group's lateral capacity
+% check (site_facts: lateral_group_multiplier/2). A single-row group has
+% no row-to-row spacing to shadow, so no reduction applies.
+row_spacing_group_multiplier(1, _, _, _, _, 1.0) :- !.
+row_spacing_group_multiplier(2, X1, X2, _, Dia, Mult) :-
+    !,
+    Ratio is (X2 - X1) / Dia,
+    lateral_group_multiplier(Ratio, Mult).
+row_spacing_group_multiplier(3, X1, X2, X3, Dia, Mult) :-
+    Ratio12 is (X2 - X1) / Dia,
+    Ratio23 is (X3 - X2) / Dia,
+    MinRatio is min(Ratio12, Ratio23),
+    lateral_group_multiplier(MinRatio, Mult).
 
 
 % ============================================================

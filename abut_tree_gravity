@@ -8,7 +8,8 @@
 
 :- module(abut_tree_gravity, [design_wall/10, equilibrium/4,
                               soil_at_or_above/3, ka/5,
-                              pa_components/5, eccentricity/7]).
+                              pa_components/5, eccentricity/7,
+                              depth_to_rock/2]).
 :- use_module('CFEM_4th_prolog_qu').
 :- use_module('Abut_tree_footing_def').
 
@@ -63,13 +64,19 @@ soil_at_or_above(BotElev, Type, Des) :-
 
 
 % depth_to_rock(+FromElev, -Hr)
+% Floored at 0: once FromElev is already at or below the rock surface,
+% there's no compressible layer left above rock, so H/B -> 0 (the
+% influence_factor/1 table's own sentinel for that case) rather than a
+% negative ratio, which falls outside the table and made settlement_strip/5
+% -- and therefore the whole footing design -- fail outright even when
+% founding on rock should give essentially zero settlement.
 depth_to_rock(FromElev, Hr) :-
     findall(Elev, soil(rock, _, Elev), RockElevs),
     ( RockElevs = [] ->
         Hr is 999          % no rock found — effectively infinite
     ;
         max_list(RockElevs, RockTop),
-        Hr is FromElev - RockTop
+        Hr is max(0, FromElev - RockTop)
     ).
 
 % ============================================================

@@ -41,9 +41,9 @@ print_solution_summary(PropElem) :-
     writeln('Elements:'),
     maplist(print_elem_line, PropElem).
 
-% Pile element: elem(piles, RowCounts, Spacings, none, none, none, none)
-print_elem_line(elem(piles, RowCounts, Spacings, _, _, _, _)) :-
-    format("  - piles:~n"),
+% Pile element: elem(piles, RowCounts, Spacings, PileLength, none, none, none)
+print_elem_line(elem(piles, RowCounts, Spacings, PileLength, _, _, _)) :-
+    ( number(PileLength) -> format("  - piles: L=~1fm~n", [PileLength]) ; format("  - piles:~n") ),
     print_pile_rows(1, RowCounts, Spacings).
 
 % Embankment: no B

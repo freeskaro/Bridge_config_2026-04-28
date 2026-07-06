@@ -18,6 +18,7 @@
 :- dynamic soil/3.
 :- dynamic soil_log/3.
 :- dynamic initial_depth/2.
+:- dynamic bearing_x_load/1.
  
 
 % ============================================================
@@ -85,6 +86,99 @@ soil_log_type_for_elev(Elev, [Top-Type-Density | Rest], Type, Density) :-
 soil_log_type_for_elev(Elev, [_ | Rest], Type, Density) :-
     soil_log_type_for_elev(Elev, Rest, Type, Density).
 
+% ============================================================
+% Sheet-Pile Embedment Design (D/H rule-of-thumb)
+%
+% Preliminary sizing only -- see site_facts for the d_h_ratio/3 table,
+% wall_support_type/2, and the caveats on what this does NOT account for
+% (groundwater differential, surcharge, base/heave stability).
+% ============================================================
+
+% current_soil_logs_desc(-LogsDesc)
+% Currently asserted soil_log/3 facts, sorted highest elevation first.
+current_soil_logs_desc(LogsDesc) :-
+    findall(Elev-Type-Density, soil_log(Type, Density, Elev), Logs0),
+    keysort(Logs0, LogsAsc),
+    reverse(LogsAsc, LogsDesc).
+
+% soil_class_at_elev(+Elev, -Class)
+% Ratio-table class of the stratum containing Elev.
+soil_class_at_elev(Elev, Class) :-
+    current_soil_logs_desc(LogsDesc),
+    soil_log_type_for_elev(Elev, LogsDesc, Type, Density),
+    soil_class_map(Type, Density, Class).
+
+% rock_top_between(+BottomElev, +Depth, -RockTopElev)
+% True when a logged rock stratum's top lies within the theoretical
+% embedment zone (BottomElev down to BottomElev - Depth) -- i.e. the pile
+% would meet refusal before reaching the ratio-derived depth.
+rock_top_between(BottomElev, Depth, RockTopElev) :-
+    current_soil_logs_desc(LogsDesc),
+    member(RockTopElev-rock-_, LogsDesc),
+    RockTopElev < BottomElev,
+    RockTopElev >= BottomElev - Depth, !.
+
+% capped_penetration_depth(+FromElev, +TheoreticalDepth, -ActualDepth)
+%
+% For POURED/GRAVITY foundations (a footing's frost-depth adjustment, or a
+% gravity wall's "extend below scour depth" method) -- these CAN bear
+% directly on rock, keyed in a nominal amount, so this caps rather than
+% refuses. Three cases:
+%   1. FromElev already sits on rock            -> nominal key-in depth only.
+%   2. Rock's top lies within the theoretical
+%      penetration zone (FromElev down to
+%      FromElev - TheoreticalDepth)              -> stop at rock_key_depth
+%                                                    past the rock surface.
+%   3. No rock encountered in that zone          -> full TheoreticalDepth.
+%
+% Do NOT use this for sheet piling -- see sheet_pile_penetration_depth/3.
+% A driven sheet pile cannot key into rock at all (nothing to predrill/
+% socket into as a driven section would), unlike a footing that can simply
+% bear on the rock surface.
+capped_penetration_depth(FromElev, TheoreticalDepth, ActualDepth) :-
+    soil_class_at_elev(FromElev, Class),
+    ( Class == rock ->
+        rock_key_depth(ActualDepth)
+    ; rock_top_between(FromElev, TheoreticalDepth, RockTopElev) ->
+        rock_key_depth(KeyDepth),
+        ActualDepth is (FromElev - RockTopElev) + KeyDepth
+    ;
+        ActualDepth = TheoreticalDepth
+    ).
+
+% sheet_pile_penetration_depth(+FromElev, +TheoreticalDepth, -ActualDepth)
+%
+% Sheet piles are DRIVEN, not drilled or poured -- they cannot gain any
+% embedment into rock at all (no nominal key-in like a footing, and
+% rock-socketing/predrilling a sheet-pile section isn't a viable,
+% economical option). If rock already sits at/above FromElev, or its top
+% lies anywhere within the theoretical penetration zone, there is no valid
+% sheet-pile design here -- fails outright rather than truncating.
+% Used by wall_embedment_depth/4 (sheet-pile WALL) and sheet_pile_elem/3
+% (sheet piling as SCOUR PROTECTION).
+sheet_pile_penetration_depth(FromElev, TheoreticalDepth, TheoreticalDepth) :-
+    soil_class_at_elev(FromElev, Class),
+    Class \== rock,
+    \+ rock_top_between(FromElev, TheoreticalDepth, _).
+
+% wall_embedment_depth(+WallType, +BottomElev, +TopElev, -Dpenet)
+% Sizes penetration depth below BottomElev (the dredge-line/site-bottom
+% reference) as Ratio x H, H = TopElev - BottomElev (retained/exposed
+% height), where Ratio depends on wall_support_type/2 and the soil class
+% at BottomElev, plus a ~20% FOS margin (embedment_fos_factor/1). Fails
+% (via sheet_pile_penetration_depth/3) if rock is encountered anywhere in
+% the theoretical embedment zone, or if already founded on rock -- sheet
+% piling simply isn't a valid wall type at that location; the caller backs
+% off to try a different wall type from retaining_wall_type/1.
+wall_embedment_depth(WallType, BottomElev, TopElev, Dpenet) :-
+    wall_support_type(WallType, Support),
+    H is TopElev - BottomElev,
+    soil_class_at_elev(BottomElev, Class),
+    d_h_ratio(Support, Class, Ratio),
+    embedment_fos_factor(FOS),
+    Theoretical is Ratio * H * FOS,
+    sheet_pile_penetration_depth(BottomElev, Theoretical, Dpenet).
+
 % retract_all_facts
 % Retract all asserted dynamic facts, resetting to a clean state.
 retract_all_facts :-
@@ -134,6 +228,44 @@ initial_bridge_length(BridgeLength) :-
     hydraulic_opening(HO),
     BridgeLength is (ApproachElev - BottomElev) * 2 * 2 + HO - 6,
     format("initial bridge length = ~1f m~n", [BridgeLength]).
+
+% estimate_girder_type(+SpanEstimate, -GirderType)
+% First girder type (cheapest/lightest first, per girder_type/1's
+% declaration order) that has any catalogue length reaching SpanEstimate.
+% Used only to pick a representative unit weight for the preliminary load
+% estimate below -- not a committed design choice.
+estimate_girder_type(SpanEstimate, GirderType) :-
+    girder_type(GirderType),
+    girder_lengths(GirderType, L),
+    L >= SpanEstimate,
+    !.
+
+% estimate_bearing_x_load(+N, +BridgeLength0)
+% Preliminary bearing_x_load estimate, computed here (before the wall
+% geometry that actually CONSUMES bearing_x_load is designed) from the
+% rough initial bridge length rather than the final, wall-geometry-derived
+% one -- this breaks the circular dependency between bearing_x_load
+% (needed to size the wall) and the final span length (only known once
+% the wall geometry itself is designed). Asserts the result over
+% bearing_x_load/1 for the rest of this solve_one run to consume.
+%
+% TODO: dead load is factored at 1.2 (concrete) across the board for
+% every girder type for now, including the steel portion of steel_beams
+% and the asphalt wearing surface (not yet modeled) -- revisit once those
+% are split out per-material (steel 1.1, concrete 1.2, asphalt 1.5).
+estimate_bearing_x_load(N, BridgeLength0) :-
+    SpanEstimate is BridgeLength0 / N,
+    estimate_girder_type(SpanEstimate, GirderType),
+    roadway_width(RW),
+    n_girders(GirderType, RW, NGirders),
+    girder_unit_weight(GirderType, UnitWeight),
+    DeadLoad is UnitWeight * NGirders * SpanEstimate / 2,  % one abutment's share of one span
+    live_load_abutment_reaction(SpanEstimate, _, _, LiveLoad),
+    BLoad is 1.2 * DeadLoad + 1.7 * LiveLoad,
+    retractall(bearing_x_load(_)),
+    assertz(bearing_x_load(BLoad)),
+    format("estimated bearing_x_load = ~2f kN (girder=~w, span est.=~1f m)~n",
+           [BLoad, GirderType, SpanEstimate]).
 
 % initial_bearing_elevation(+BridgeLength, -BearingElevation)
 % Bearing elevation uses the larger of the high-water rule and span rule,
@@ -265,10 +397,18 @@ is_pure_spill_through(Acc) :-
     \+ member(elem(retainment, _, _, _, _, _, _), Acc).
 
 % sheet_pile_elem(+BotX, +RiverbedElev, -Elem)
+% Penetration uses sheet_pile_penetration_depth/3 (abut_soil_config_8) --
+% a driven sheet pile cannot gain any embedment into rock, so this FAILS
+% outright (rather than truncating) if rock blocks the full sheet_pile_depth.
+% When that happens, wall types whose only permitted scour mitigation is
+% sheet_pile (mse_wall, gabion_block, timber_crib -- see
+% wall_scour_mitigation/2) simply have no valid design at this location,
+% and the caller backs off to a wall type that supports "extend" instead.
 sheet_pile_elem(BotX, RiverbedElev,
                 elem(sheet_piling, BotX, BotElev, BotX, RiverbedElev, 0, none)) :-
     sheet_pile_depth(D),
-    BotElev is RiverbedElev - D.
+    sheet_pile_penetration_depth(RiverbedElev, D, ActualD),
+    BotElev is RiverbedElev - ActualD.
 
 % rip_rap_elem(+RefX, +RiverbedElev, -Elem)
 rip_rap_elem(RefX, RiverbedElev,
@@ -286,11 +426,28 @@ rip_rap_elem(RefX, RiverbedElev,
 scour_mitigation(_, BotElev, BottomElev, _, AdjBotElev, AdjBotElev, []) :-
     ( \+ obstacle_type(river) ; BotElev > BottomElev ), !.
 
+% Rock forming the riverbed itself is inherently scour-resistant -- there's
+% no erodible material above it to wash away, so no supplemental scour
+% protection (rip rap, sheet piling, or extending the wall base) is needed
+% for ANY wall type when the riverbed founds directly on rock. This is what
+% makes wall types whose only method is sheet_pile (mse_wall, gabion_block,
+% timber_crib) viable at rockD=0 -- they'd otherwise be blocked by an
+% unachievable sheet-pile embedment (sheet_pile_penetration_depth/3)
+% despite not actually needing scour protection at all.
+scour_mitigation(_, _, BottomElev, _, AdjBotElev, AdjBotElev, []) :-
+    obstacle_type(river),
+    soil_class_at_elev(BottomElev, rock), !.
+
+% "Extend" scour mitigation: penetration below the riverbed is capped via
+% capped_penetration_depth/3 so the wall's base never gets driven into
+% sound rock -- the same refusal constraint applied to sheet piling
+% (wall_embedment_depth/4, sheet_pile_elem/3) applies here too.
 scour_mitigation(WallType, _, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, [RipRapElem]) :-
     obstacle_type(river),
     wall_scour_mitigation(WallType, extend),
     scour_depth(SD),
-    DesignBotElev is min(AdjBotElev, BottomElev - SD),
+    capped_penetration_depth(BottomElev, SD, ActualSD),
+    DesignBotElev is min(AdjBotElev, BottomElev - ActualSD),
     rip_rap_elem(AdjBotX, BottomElev, RipRapElem).
 
 scour_mitigation(WallType, _, BottomElev, AdjBotX, AdjBotElev, AdjBotElev, [SheetElem, RipRapElem]) :-
@@ -345,13 +502,35 @@ design_elems([elem(retainment, _, BotElev, _, TopElev, _, none) | Rest], CurrX, 
     elem_below(Acc, Below),
     ( Rest = [elem(embankment,_,_,_,_,_,_)|_] -> Above = embankment ; Above = none ),
     % Wall type: concrete gravity only if retainment reaches surface;
-    % apply the bearing X vertical load when the retainment wall reaches the surface.
+    % apply the bearing X vertical load only when THIS wall actually reaches
+    % the surface (TopElev == SurfaceElev) -- i.e. it is itself the bearing
+    % seat, with no separate stub_abutment above it. Checking WallType
+    % membership in wall_type_at_surface/1 instead of the geometry directly
+    % was a bug: concrete_gravity/timber_crib are also valid choices for
+    % walls that stop at the BEARING elevation (with a stub above them
+    % carrying the reaction), and were getting the full bearing_x_load
+    % applied to them too even though they don't support it -- see the
+    % "why does this wall on rock still need piles" investigation.
     surface(SurfaceElev),
     ( TopElev =:= SurfaceElev -> wall_type_at_surface(WallType) ; retaining_wall_type(WallType) ),
-    ( wall_type_at_surface(WallType) -> bearing_x_load(BLoad) ; BLoad = 0 ),
+    ( TopElev =:= SurfaceElev -> bearing_x_load(BLoad) ; BLoad = 0 ),
     bottom(BottomElev),                                             %check if on slope or below river to define geometry
-    ( wall_penetration_depth(WallType, Dpenet) ->
-        % Penetration-based wall: uses penetration depth from site_facts; handles own scour.
+    ( wall_support_type(WallType, _) ->
+        % Penetration-based wall (sheet piling): a cantilevered driven
+        % section, not a gravity structure -- the D/H-ratio embedment
+        % (site_facts: d_h_ratio/3) IS the complete design. It does NOT go
+        % through the gravity-wall footing check (design_wall: overturning/
+        % sliding/settlement/bearing on a B-wide base -- sheet piling has
+        % no such footing) or pile fallback (rock-socketing/predrilling a
+        % sheet-pile wall isn't viable, economical, unlike a drilled/driven
+        % pile). Committed to via wall_support_type/2 (a plain fact check,
+        % true for sheet_piling regardless of site conditions) BEFORE
+        % calling wall_embedment_depth/4 as a required goal, not a
+        % condition -- if the embedment fails (e.g. rock blocks it), the
+        % whole clause fails instead of silently falling through to the
+        % gravity-wall path below, which would give sheet piling a
+        % physically meaningless designed base width.
+        wall_embedment_depth(WallType, BottomElev, TopElev, Dpenet),
         AdjBotX       = CurrX,
         AdjBotElev    is BottomElev - Dpenet,
         DesignBotElev = AdjBotElev,
@@ -360,27 +539,36 @@ design_elems([elem(retainment, _, BotElev, _, TopElev, _, none) | Rest], CurrX, 
             ScourElems = [RipRapElem]
         ;
             ScourElems = []
-        )
+        ),
+        ( wall_back_offset(WallType, X2off) -> ProcTopX is AdjBotX - X2off ; ProcTopX = AdjBotX ),
+        Processed = elem(retainment, AdjBotX, DesignBotElev, ProcTopX, TopElev, 0, WallType),
+        PilesElem = none
     ;
-        % Other wall types: frost adjustment then scour mitigation.
+        % Other (gravity) wall types: frost adjustment then scour mitigation.
+        % Frost penetration is capped via capped_penetration_depth/3 so it
+        % never drives the wall's base into sound rock either -- the same
+        % refusal constraint applied to sheet piling and "extend" scour.
         frost_depth_for_wall(WallType, Df),                         %frost depth per wall type
         Theta is atan(0.5),
         ( BotElev > BottomElev ->                                   %if gravity wall is above riverbed
+            Theoretical is Df * cos(Theta),
+            capped_penetration_depth(BotElev, Theoretical, ActualPen),
             AdjBotX    is CurrX - Df * sin(Theta),                  %plateau "a" for minimum d
-            AdjBotElev is BotElev - Df * cos(Theta)                 %depth "d" for minimum frost protection
+            AdjBotElev is BotElev - ActualPen                       %depth "d" for minimum frost protection
         ;
+            capped_penetration_depth(BotElev, Df, ActualPen),
             AdjBotX    = CurrX,                                     %if gravity wall is below riverbed
-            AdjBotElev is BotElev - Df
+            AdjBotElev is BotElev - ActualPen
         ),
         % Apply scour mitigation for river crossings at or below riverbed.
         % Backtracks over permitted choices per wall type (wall_scour_mitigation/2).
-        scour_mitigation(WallType, BotElev, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, ScourElems)
+        scour_mitigation(WallType, BotElev, BottomElev, AdjBotX, AdjBotElev, DesignBotElev, ScourElems),
+        AdjHead = elem(retainment, AdjBotX, DesignBotElev, _, TopElev, _, WallType),
+        %start wall design
+        allowable_settlement_for_wall(WallType, AllowS),                %for type get allowable deflection TODO move to def page
+        Dbx is 0.6,
+        wall_design_or_piles(Above, _H, _B, _W, _E, AdjHead, Below, AllowS, BLoad, Dbx, Processed, PilesElem)
     ),
-    AdjHead = elem(retainment, AdjBotX, DesignBotElev, _, TopElev, _, WallType),
-    %start wall design
-    allowable_settlement_for_wall(WallType, AllowS),                %for type get allowable deflection TODO move to def page
-    Dbx is 0.6,
-    wall_design_or_piles(Above, _H, _B, _W, _E, AdjHead, Below, AllowS, BLoad, Dbx, Processed, PilesElem),
     % append a bearing_x element to calculate bridge length
     % a bearing "element" with seat below girder level at the base X - 0.6 m.
     initial_depth(_, DepthFromRatio),

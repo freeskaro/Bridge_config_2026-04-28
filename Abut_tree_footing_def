@@ -43,6 +43,8 @@ influence_factor(HB, Is) :-
 % influence_table(-Points)
 % Digitised [H/B, I_s] pairs for a strip footing (approximate).
 influence_table([
+    [0,     0.00],  % sentinel: H/B → 0 -- rigid layer (rock) right at the
+                     % footing base, no compressible material left to settle
     [0.10,  0.90],
     [0.25,  0.95],
     [0.50,  1.00],

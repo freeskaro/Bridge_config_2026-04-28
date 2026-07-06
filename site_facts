@@ -15,10 +15,7 @@
 % ============================================================
 
 soil_log1(gravel, loose,  100.0).
-soil_log1(gravel, loose,   97.0).
-soil_log1(gravel, medium,  95.5).
-soil_log1(gravel, medium,   93.0).
-soil_log1(rock,   sound,   90.0).
+soil_log1(rock,   sound,   85.0).
 
 % ============================================================
 % Site Geometry and Hydraulic Data
@@ -39,7 +36,11 @@ approach_elevation(100).
 % ============================================================
 
 roadway_width(10).           % bridge deck width (m)
-bearing_x_load(9000).        % vertical load at bearing seat (kN)
+
+% bearing_x_load/1 is no longer a fixed value here -- it is computed once
+% per solve_one run (abut_soil_config_8: estimate_bearing_x_load/2) from a
+% preliminary dead+live load estimate at the initial bridge length, before
+% the wall geometry that consumes it is designed. Declared dynamic there.
 
 % ============================================================
 % Unit Weights  (kN/m³)
@@ -85,10 +86,72 @@ wall_back_offset(sheet_piling, 1.5).
 % Pile foundation fallback is permitted only for the listed wall types.
 wall_pile_fallback(concrete_gravity).
 
-% Minimum base depth below the project bottom elevation (m).
-% Walls with this fact use penetration depth instead of frost adjustment.
-% Walls without this fact use frost_depth_for_wall for base geometry.
-wall_penetration_depth(sheet_piling, 4.0).
+% Walls with a wall_support_type/2 entry use the D/H embedment rule below
+% instead of frost adjustment. Walls without one use frost_depth_for_wall
+% for base geometry.
+
+% ============================================================
+% Sheet-Pile Embedment Sizing (D/H rule-of-thumb)
+%
+% Preliminary sizing only. These ratios come from widely used rules of
+% thumb (free-earth/fixed-earth support method results, Rankine/Coulomb
+% theory) and are a *starting point* -- final embedment depth must come
+% from a proper earth-pressure analysis (or software such as DeepEX/
+% SPW911) stamped by a geotechnical/structural engineer.
+%
+% wall_support_type(WallType, Support): only cantilever (unanchored)
+% sheet-pile walls are modeled currently. Cantilever walls rely entirely
+% on passive resistance below the dredge line, so they need much deeper
+% embedment than an anchored/tied-back wall would; the anchored ratios
+% below are recorded for when a tieback wall type is added.
+% ============================================================
+
+wall_support_type(sheet_piling, cantilever).
+
+% soil_class_map(Type, Density, Class): maps borehole soil_log entries to
+% the ratio-table categories. "medium" gravel is interpolated between
+% loose and dense; rock is handled separately (refusal/keying, not a
+% ratio-table class -- sheet piles don't drive deep into sound rock).
+soil_class_map(gravel, loose,  loose_granular).
+soil_class_map(gravel, medium, medium_granular).
+soil_class_map(gravel, dense,  dense_granular).
+soil_class_map(rock,   sound,  rock).
+soil_class_map(clay,   soft,   soft_clay).
+soil_class_map(clay,   medium, soft_clay).   % table groups "soft to medium clay" together
+soil_class_map(clay,   stiff,  stiff_clay).
+
+% d_h_ratio(Support, Class, Ratio): D = Ratio x H, H = retained/exposed
+% height above the dredge line. Dense/loose granular and clay ranges per
+% rule of thumb; loose sand pushed to the deep end of its range (lower
+% friction angle, liquefaction/seepage risk); stiff clay kept close to
+% the dense-granular ratio even when anchored, per the note that stiff
+% clay is still weaker in passive resistance than dense sand.
+d_h_ratio(cantilever, loose_granular,  2.0).   % cantilever, granular: 1.5-2.0 x H
+d_h_ratio(cantilever, medium_granular, 1.75).
+d_h_ratio(cantilever, dense_granular,  1.5).
+d_h_ratio(cantilever, soft_clay,       2.5).   % cantilever, soft/medium clay: 2.0-3.0 x H (can run higher)
+d_h_ratio(cantilever, stiff_clay,      2.0).
+d_h_ratio(anchored,   loose_granular,  1.0).   % anchored, granular: 0.7-1.0 x H
+d_h_ratio(anchored,   medium_granular, 0.85).
+d_h_ratio(anchored,   dense_granular,  0.7).
+d_h_ratio(anchored,   soft_clay,       1.25).  % anchored, soft clay: 1.0-1.5 x H
+d_h_ratio(anchored,   stiff_clay,      1.75).
+
+% Typical practice increases the ratio-derived depth by ~20% rather than
+% trusting theoretical passive pressure at full value (passive pressure
+% needs much more wall movement to mobilize than active pressure does).
+embedment_fos_factor(1.2).
+
+% Nominal key-in depth when the toe meets refusal on sound rock before
+% reaching the theoretical ratio-based depth.
+rock_key_depth(0.5).
+
+% NOT modeled -- flagged for future work, since neither can be sized from
+% a rule-of-thumb ratio alone:
+%   - groundwater differential (unbalanced head across the wall is often
+%     the single biggest driver of extra embedment)
+%   - surcharge loads near the top of the wall
+%   - base/heave stability check for soft clay (Terzaghi basal stability)
 
 % Walls that serve as their own scour protection.
 % Only rip rap is added as a supplementary scour element.
@@ -102,6 +165,7 @@ wall_scour_mitigation(concrete_gravity, sheet_pile).
 wall_scour_mitigation(mse_wall,         sheet_pile).
 wall_scour_mitigation(timber_crib,      sheet_pile).
 wall_scour_mitigation(gabion_block,     sheet_pile).
+wall_scour_mitigation(gabion_block,     extend).
 
 % ============================================================
 % Pile Design Parameters
@@ -109,8 +173,17 @@ wall_scour_mitigation(gabion_block,     sheet_pile).
 
 pile_incl(4).               % inclination factor for inclined piles
 pile_pmax(900).             % maximum allowable pile load (kN)
-pile_hlat(125).             % maximum allowable lateral load per pile (kN)
-pile_mc_threshold(50).      % Mc below which single-row centroid formula applies (kNm)
+pile_hlat(80).             % maximum allowable lateral load per pile (kN)
+pile_mc_threshold(180).     % Mc below which single-row centroid formula applies (kNm)
+
+% lateral_group_multiplier(+SpacingInDiameters, -Multiplier)
+% Reduction in group lateral resistance for closely spaced pile rows
+% (shadowing effect): 3D->0.4, 4D->0.6, 5D->0.8, 6D(+)->1.0. Linear fit
+% through those four points, clamped to [0, 1.0] -- group effects are
+% taken to vanish beyond 6 diameters of row spacing.
+lateral_group_multiplier(Ratio, Mult) :-
+    Mult0 is 0.2 * Ratio - 0.2,
+    Mult is max(0, min(1.0, Mult0)).
 
 x1min(0.450).               % minimum front-edge pile offset from cap edge (m)
 

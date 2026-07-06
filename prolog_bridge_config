@@ -16,6 +16,9 @@
 
 :- consult('abut_soil_config_8').
 :- consult('bridge_facts').
+:- consult('dead_load').
+:- consult('Live_load').
+:- consult('price_list').
 
 
 
@@ -72,7 +75,7 @@ abutment_style(_, spill_through,none).
 % n_girders(+GirderType, +RoadwayWidth, -N)
 % Ceiling division: enough girders to cover the full deck width.
 n_girders(GirderType, RoadwayWidth, N) :-
-    girder_props(GirderType, _, width(GW), _),
+    girder_props(GirderType, _, width(GW)),
     N is ceiling(RoadwayWidth / GW).
 
 
@@ -94,6 +97,7 @@ solve_one(solution(N, PropElem, BridgeLength, GirderType, SpanLengths, Piers)) :
     retract_all_facts,
     assert_all_soil_logs,
     initial_bridge_length(BridgeLength0),
+    estimate_bearing_x_load(N, BridgeLength0),
     compute_bearing_for_nspan(N, BridgeLength0, BearingElev, DepthFromRatio, SurfaceElev),
     assertz(initial_depth(N, DepthFromRatio)),
     assertz(surface(SurfaceElev)),
@@ -127,126 +131,11 @@ pier_config(NPiers, BotElev, BearingElev,
     Height is BearingElev - BotElev.
 
 % ============================================================
-% Per-Element Cost Calculation
-% ============================================================
-
-% price_element(+Elem, +RW, -priced(Elem, Label, Cost))
-% Prices a single element from PropElem for BOTH abutments combined.
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(piles, RowCounts, _, _, _, _, _), !,
-    sum_spans(RowCounts, NPiles),
-    pile_cost_each(Rate),
-    Cost is 2 * NPiles * Rate,
-    format(atom(Label), "piles (~w piles x2 abuts)", [NPiles]).
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(retainment, _, BotElev, _, TopElev, B, concrete_gravity), !,
-    wall_cost_props(concrete_gravity, volume, Rate),
-    H is TopElev - BotElev,
-    ( B > 2.5 ->
-        % T-shaped cross-section: footing (1.5 x B) + stem ((H-1.5) x 1.5)
-        XSection is 1.5 * B + (H - 1.5) * 1.5,
-        format(atom(Label),
-               "retainment wall (concrete_gravity cantilever, H=~1f m, B=~1f m)", [H, B])
-    ;
-        % Rectangular block
-        XSection is H * B,
-        format(atom(Label),
-               "retainment wall (concrete_gravity, H=~1f m, B=~1f m)", [H, B])
-    ),
-    Cost is 2 * XSection * RW * Rate.
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(retainment, _, BotElev, _, TopElev, B, WallType), !,
-    wall_cost_props(WallType, Method, Rate),
-    H is TopElev - BotElev,
-    ( Method == volume ->
-        OneSide is H * B * RW * Rate
-    ;
-        OneSide is H * RW * Rate
-    ),
-    Cost is 2 * OneSide,
-    format(atom(Label), "retainment wall (~w, H=~1f m, B=~1f m)", [WallType, H, B]).
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(stub_abutment, _, BotElev, _, TopElev, B, _), !,
-    wall_cost_props(stub_abutment, volume, Rate),
-    H is TopElev - BotElev,
-    Cost is 2 * H * B * RW * Rate,
-    format(atom(Label), "stub abutment (H=~1f m, B=~1f m)", [H, B]).
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(embankment, _, BotElev, _, TopElev, _, _), !,
-    H is TopElev - BotElev,
-    Cost is 2 * 30 * RW * H,
-    format(atom(Label), "embankment (H=~1f m)", [H]).
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(sheet_piling, _, BotElev, _, TopElev, _, _), !,
-    wall_cost_props(sheet_piling, area, Rate),
-    H is TopElev - BotElev,
-    Cost is 2 * H * RW * Rate,
-    format(atom(Label), "sheet piling (H=~1f m)", [H]).
-
-price_element(Elem, RW, priced(Elem, Label, Cost)) :-
-    Elem = elem(rip_rap, _, _, _, _, Extent, _), !,
-    wall_cost_props(rip_rap, area, Rate),
-    Cost is 2 * Extent * RW * Rate,
-    format(atom(Label), "rip rap (~1f m extent)", [Extent]).
-
-price_element(Elem, _RW, priced(Elem, other, 0)).
-
-% price_elements(+PropElem, +RW, -PricedList)
-price_elements([], _, []).
-price_elements([E|Es], RW, [PE|PEs]) :-
-    price_element(E, RW, PE),
-    price_elements(Es, RW, PEs).
-
-% price_pier(+Piers, +RW, -priced(Piers, Label, Cost))
-price_pier(Piers, RW, priced(Piers, Label, Cost)) :-
-    Piers = piers(NPiers, _, _, _, _),
-    substructure_props(pier, _, PierRate),
-    Cost is NPiers * PierRate * RW,
-    format(atom(Label), "piers (~w x pipe_pile_bent)", [NPiers]).
-
-% price_solution(+Sol, -PricedItems, -TotalCost)
-% PricedItems is a list of priced(Item, Label, Cost) for every line item.
-price_solution(solution(_N, PropElem, _BL, GirderType, SpanLengths, Piers),
-               PricedItems, TotalCost) :-
-    roadway_width(RW),
-    % girder line item
-    girder_props(GirderType, _, _, cost_per_m(CpM)),
-    n_girders(GirderType, RW, NGirders),
-    sum_spans(SpanLengths, TotalSpanLen),
-    GirderCost is CpM * TotalSpanLen * NGirders,
-    format(atom(GLabel), "girders (~w, ~w/span, ~1f m total)", [GirderType, NGirders, TotalSpanLen]),
-    GirderItem = priced(girders, GLabel, GirderCost),
-    % per-element abutment items
-    ( is_list(PropElem) ->
-        price_elements(PropElem, RW, ElemItems)
-    ;
-        ElemItems = []
-    ),
-    % pier item
-    price_pier(Piers, RW, PierItem),
-    % assemble
-    append([GirderItem | ElemItems], [PierItem], PricedItems),
-    sum_priced(PricedItems, TotalCost).
-
-% sum_priced(+PricedItems, -Total)
-sum_priced([], 0).
-sum_priced([priced(_, _, C) | T], Total) :-
-    sum_priced(T, T1),
-    Total is T1 + C.
-
-% solution_cost/2 — backward-compatible wrapper
-solution_cost(Sol, TotalCost) :-
-    price_solution(Sol, _, TotalCost).
-
-% ============================================================
 % Solution Printing
 % ============================================================
+% (Pricing predicates -- price_element/3, price_elements/3, price_pier/3,
+% price_solution/3, girder_cost_items/5, sum_priced/2, solution_cost/2 --
+% and all unit rates now live in price_list.)
 
 % scour_label(+PropElem, -Label)
 % Derives a scour protection label from the elements present in PropElem.
