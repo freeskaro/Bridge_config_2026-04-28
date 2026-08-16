@@ -10,10 +10,10 @@
 %   - expaned soil definition to include clays and presence of blocks
 
 :- use_module(library(lists), [reverse/2]).
-:- consult('site_facts').
-:- consult('abut_config_facts').
-:- consult('abut_pile_fallback').
-:- consult('abut_print').
+:- consult('site_facts.pl').
+:- consult('abut_config_facts.pl').
+:- consult('abut_pile_fallback.pl').
+:- consult('abut_print.pl').
 :- dynamic surface/1.
 :- dynamic soil/3.
 :- dynamic soil_log/3.

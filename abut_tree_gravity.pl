@@ -10,8 +10,8 @@
                               soil_at_or_above/3, ka/5,
                               pa_components/5, eccentricity/7,
                               depth_to_rock/2]).
-:- use_module('CFEM_4th_prolog_qu').
-:- use_module('Abut_tree_footing_def').
+:- use_module('CFEM_4th_prolog_qu.pl').
+:- use_module('Abut_tree_footing_def.pl').
 
 
 % ============================================================

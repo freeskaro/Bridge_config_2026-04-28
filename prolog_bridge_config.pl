@@ -14,11 +14,11 @@
 %   solve_all(-Solutions)          % collect every valid solution into a list
 %   print_all_solutions(+Solutions)
 
-:- consult('abut_soil_config_8').
-:- consult('bridge_facts').
-:- consult('dead_load').
-:- consult('Live_load').
-:- consult('price_list').
+:- consult('abut_soil_config_8.pl').
+:- consult('bridge_facts.pl').
+:- consult('dead_load.pl').
+:- consult('Live_load.pl').
+:- consult('price_list.pl').
 
 
 

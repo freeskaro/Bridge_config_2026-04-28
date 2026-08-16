@@ -30,8 +30,11 @@
 %   ?- run_full_height_study.   % 3-way WINNER summary (retaining_structure/surface_wall/spill)
 %   ?- run_table.               % 4-column table: cheapest overall (+ its type), spill,
 %                                % MSE-specific near-full-height, full-depth concrete
+%                                % (pipe-delimited "ROW|..." lines)
+%   ?- run_summary_table.       % same 4-column data, rendered as a readable markdown table
+%                                % with comma-formatted costs and human-readable type labels
 
-:- consult('prolog_bridge_config').
+:- consult('prolog_bridge_config.pl').
 :- dynamic(bottom/1).
 :- dynamic(hydraulic_opening/1).
 :- dynamic(soil_log1/3).
@@ -148,8 +151,12 @@ is_mse_near_full_height(P) :-
     is_full_height_to_bearing(P),
     abutment_style(P, _, mse_wall).
 
-% run_combo4(+H, +Density, +RockDBelow, +HO)
-run_combo4(H, Density, RockDBelow, HO) :-
+% combo4_data(+H, +Density, +RockDBelow, +HO,
+%             -CheapestCost, -CheapType, -SpillCost, -MseCost, -FullCost)
+% Solves one grid point and returns the raw values (no printing/formatting) --
+% shared by run_table/0 (pipe-delimited) and run_summary_table/0 (markdown).
+% Fails if the site produces no solutions at all.
+combo4_data(H, Density, RockDBelow, HO, CheapestCost, CheapType, SpillCost, MseCost, FullCost) :-
     ApproachElev = 100,
     Bottom is ApproachElev - H,
     RockElev is Bottom - RockDBelow,
@@ -159,25 +166,28 @@ run_combo4(H, Density, RockDBelow, HO) :-
     assertz(soil_log1(gravel, Density, ApproachElev)),
     assertz(soil_log1(rock, sound, RockElev)),
     ( catch(solve_all(Solutions), _, Solutions=[]) -> true ; Solutions = [] ),
-    ( Solutions == [] ->
-        format("H=~w~t~10|~w~t~20|rockD=~w~t~30|NO SOLUTIONS~n",[H,Density,RockDBelow])
-    ;
-        findall(Cost-Sol, (member(Sol,Solutions), price_solution(Sol,_,Cost)), AllPairs),
-        keysort(AllPairs, AllSorted),
-        AllSorted = [CheapestCost-CheapestSol|_],
-        CheapestSol = solution(_,CheapP,_,_,_,_),
-        abutment_style(CheapP, CheapSt, CheapWT),
-        ( CheapSt == spill_through -> CheapType = spill_through ; CheapType = CheapWT ),
+    Solutions \== [],
+    findall(Cost-Sol, (member(Sol,Solutions), price_solution(Sol,_,Cost)), AllPairs),
+    keysort(AllPairs, AllSorted),
+    AllSorted = [CheapestCost-CheapestSol|_],
+    CheapestSol = solution(_,CheapP,_,_,_,_),
+    abutment_style(CheapP, CheapSt, CheapWT),
+    ( CheapSt == spill_through -> CheapType = spill_through ; CheapType = CheapWT ),
 
-        ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), abutment_style(P,St,_), St==spill_through), SpillCosts),
-          SpillCosts=[SpillCost|_] -> true ; SpillCost=none ),
-        ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), is_mse_near_full_height(P)), MseCosts),
-          MseCosts=[MseCost|_] -> true ; MseCost=none ),
-        ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), is_full_height_to_surface(P)), FullCosts),
-          FullCosts=[FullCost|_] -> true ; FullCost=none ),
+    ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), abutment_style(P,St,_), St==spill_through), SpillCosts),
+      SpillCosts=[SpillCost|_] -> true ; SpillCost=none ),
+    ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), is_mse_near_full_height(P)), MseCosts),
+      MseCosts=[MseCost|_] -> true ; MseCost=none ),
+    ( findall(C, (member(C-S,AllSorted), S=solution(_,P,_,_,_,_), is_full_height_to_surface(P)), FullCosts),
+      FullCosts=[FullCost|_] -> true ; FullCost=none ).
 
+% run_combo4(+H, +Density, +RockDBelow, +HO) -- pipe-delimited raw output (unchanged format)
+run_combo4(H, Density, RockDBelow, HO) :-
+    ( combo4_data(H, Density, RockDBelow, HO, CheapestCost, CheapType, SpillCost, MseCost, FullCost) ->
         format("ROW|~w|~w|~w|~0f|~w|~w|~w|~w~n",
                [H,Density,RockDBelow,CheapestCost,CheapType,SpillCost,MseCost,FullCost])
+    ;
+        format("H=~w~t~10|~w~t~20|rockD=~w~t~30|NO SOLUTIONS~n",[H,Density,RockDBelow])
     ).
 
 run_table :-
@@ -187,3 +197,64 @@ run_table :-
       forall(member(Density,[loose,dense]),
         forall(member(RockD,[0,4,8]),
           run_combo4(H, Density, RockD, 15)))).
+
+% ============================================================
+% Pretty markdown summary table (matches the format used when reporting
+% this study's results in chat / the paper: comma-separated costs, a
+% human-readable wall-type label, "—" for categories with no solution)
+% ============================================================
+
+% money(+Number|none, -Atom) -- e.g. 1086640 -> '1,086,640'; none -> '—'
+money(none, '—') :- !.
+money(N, Atom) :-
+    Rounded is round(N),
+    number_codes(Rounded, Codes),
+    reverse(Codes, RevCodes),
+    money_group(RevCodes, 0, RevGrouped),
+    reverse(RevGrouped, GroupedCodes),
+    atom_codes(Atom, GroupedCodes).
+
+money_group([], _, []).
+money_group([C|Cs], N, [C|Rest]) :-
+    N1 is N + 1,
+    ( Cs \== [], N1 mod 3 =:= 0 -> Rest = [0',|Rest1] ; Rest = Rest1 ),
+    money_group(Cs, N1, Rest1).
+
+% type_label(+WallTypeOrNone, -Label) -- human-readable name for the table's Type column
+type_label(none, '—').
+type_label(spill_through, 'Spill-through').
+type_label(gabion_block, 'Gabion').
+type_label(mse_wall, 'MSE').
+type_label(concrete_gravity, 'Concrete gravity').
+type_label(sheet_piling, 'Sheet piling').
+type_label(timber_crib, 'Timber crib').
+
+soil_label(loose, 'Loose').
+soil_label(dense, 'Dense').
+
+print_summary_header :-
+    format("| H | Soil | Rock D | Cheapest ($) | Type | Spill-Through ($) | MSE ($) | Full-Height Wall ($) |~n"),
+    format("|---|------|--------|--------------|------|--------------------|---------|------------------------|~n").
+
+print_summary_row(H, Density, RockD, CheapestCost, CheapType, SpillCost, MseCost, FullCost) :-
+    soil_label(Density, SoilLbl),
+    type_label(CheapType, TypeLbl),
+    money(CheapestCost, CheapStr),
+    money(SpillCost, SpillStr),
+    money(MseCost, MseStr),
+    money(FullCost, FullStr),
+    format("| ~w | ~w | ~w | ~w | ~w | ~w | ~w | ~w |~n",
+           [H, SoilLbl, RockD, CheapStr, TypeLbl, SpillStr, MseStr, FullStr]).
+
+run_summary_table :-
+    setup_nspan1,
+    setup_mse25,
+    print_summary_header,
+    forall(member(H,[5,7,9]),
+      forall(member(Density,[loose,dense]),
+        forall(member(RockD,[0,4,8]),
+          ( combo4_data(H, Density, RockD, 15, CheapestCost, CheapType, SpillCost, MseCost, FullCost) ->
+              print_summary_row(H, Density, RockD, CheapestCost, CheapType, SpillCost, MseCost, FullCost)
+          ;
+              format("| ~w | ~w | ~w | NO SOLUTIONS | | | | |~n", [H, Density, RockD])
+          )))).

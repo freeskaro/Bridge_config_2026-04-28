@@ -20,12 +20,12 @@
 % site_facts and bridge_facts, which are loaded by abut_soil_config_8
 % before this file is consulted.
 
-:- use_module('abut_tree_gravity',      [design_wall/10, equilibrium/4,
+:- use_module('abut_tree_gravity.pl',      [design_wall/10, equilibrium/4,
                                          soil_at_or_above/3, ka/5,
                                          pa_components/5, eccentricity/7,
                                          depth_to_rock/2]).
-:- use_module('Abut_tree_footing_def',  [settlement_strip/5]).
-:- use_module('CFEM_4th_prolog_qu',     [ultimate_bearing_capacity/8]).
+:- use_module('Abut_tree_footing_def.pl',  [settlement_strip/5]).
+:- use_module('CFEM_4th_prolog_qu.pl',     [ultimate_bearing_capacity/8]).
 
 
 % ============================================================
@@ -186,6 +186,12 @@ check_pile_config(B, Pcf, Mcf, Vcf,
     (X2raw = none -> X2 = 0.0 ; X2 = X2raw),
     (X3raw = none -> X3 = 0.0 ; X3 = X3raw),
 
+    % --- transverse fit (across the roadway width Z; independent of the
+    % longitudinal X1/X2/X3 row positions checked above) ---
+    transverse_fits(N1, Dia),
+    ( Rows >= 2 -> transverse_fits(N2, Dia) ; true ),
+    ( Rows >= 3 -> transverse_fits(N3, Dia) ; true ),
+
     % --- centroid & moment arms ---
     pile_centroid(B, X1, X2, X3, N1, N2, N3, Xc, R1, R2, R3, SumR2),
 
@@ -279,6 +285,21 @@ pile_spacing(B, 3, X1, X2, X3, Dia) :-
     candidate_x1(X1),
     X2 is X1 + Dx,
     valid_x3(B, X2, Dia, X3).
+
+
+% transverse_fits(+N, +Dia)
+% Checks that N piles of diameter Dia fit across the roadway width (Z),
+% independent of the longitudinal (front-to-back, within B) row spacing
+% checked elsewhere: each outer pile needs at least transverse_edge_factor
+% diameters of edge distance from the roadway width's sides, and adjacent
+% piles within the row need at least transverse_spacing_factor diameters
+% between them (N-1 gaps for N piles).
+transverse_fits(N, Dia) :-
+    roadway_width(Z),
+    transverse_edge_factor(EdgeF),
+    transverse_spacing_factor(SpaceF),
+    RequiredWidth is 2 * EdgeF * Dia + (N - 1) * SpaceF * Dia,
+    RequiredWidth =< Z.
 
 
 % ============================================================

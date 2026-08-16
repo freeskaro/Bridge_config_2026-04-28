@@ -1,4 +1,4 @@
-:- consult('prolog_bridge_config').
+:- consult('prolog_bridge_config.pl').
 :- dynamic(bottom/1).
 :- dynamic(hydraulic_opening/1).
 :- dynamic(soil_log1/3).

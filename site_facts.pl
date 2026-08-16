@@ -187,6 +187,14 @@ lateral_group_multiplier(Ratio, Mult) :-
 
 x1min(0.450).               % minimum front-edge pile offset from cap edge (m)
 
+% Transverse (across the roadway width, Z) spacing rules -- distinct from
+% x1min/candidate_dx above, which only govern the longitudinal (front-to-back,
+% within B) row positions. A row of N piles needs its outer piles at least
+% transverse_edge_factor*Dia in from each side of the roadway width, and
+% adjacent piles within the row at least transverse_spacing_factor*Dia apart.
+transverse_edge_factor(1.5).    % minimum edge distance, in pile diameters
+transverse_spacing_factor(4).   % minimum pile-to-pile spacing, in pile diameters
+
 n1_range([4,6,8,10,12,14]). % candidate pile counts for row 1
 n2_range([4,6,8,10,12]).    % candidate pile counts for row 2
 n3_range([4,6,8,10,12]).    % candidate pile counts for row 3
