@@ -1,4 +1,4 @@
-:- consult('c:/Users/erfan/Documents/TAC LVRB/Bridge_config_2026-04-28/prolog_bridge_config.pl').
+:- consult('prolog_bridge_config.pl').
 
 :- dynamic(soil_log1/3).
 

@@ -1,5 +1,5 @@
 % Consult the file first, then run any of these:
-['C:/Users/rerfani/Documents/Prolog/abutment config 2026-04-04 - Claude/prolog_bridge_config']
+['prolog_bridge_config']
 
 % --- Run everything and print all solutions ---
 ?- solve_all(S), print_all_solutions(S).

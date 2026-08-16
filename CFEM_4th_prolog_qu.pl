@@ -1,5 +1,5 @@
 % Bearing Capacity Calculation based on Canadian Foundation Engineering Manual 4th Edition, Section 10.2
-:-module('C:/Users/rerfani/Documents/Prolog/CFEM_4th_prolog_qu',[ultimate_bearing_capacity/8]).
+:-module(cfem_4th_prolog_qu,[ultimate_bearing_capacity/8]).
 
 % Assumes general shear failure for shallow foundations on uniform soil.
 % Handles both drained and undrained conditions.

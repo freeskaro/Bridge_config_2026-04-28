@@ -1,5 +1,4 @@
-%this code is towards the developement of a truck loading analysis 
-%['C:/Users/erfan/Documents/TAC LVRB/Bridge_config_2026-04-28/Live_load']
+%this code is towards the developement of a truck loading analysis
 
 %helper
 select_last([H|T],Last,Rest):- append(Rest,[Last], [H|T]).
