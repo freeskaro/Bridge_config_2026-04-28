@@ -57,10 +57,16 @@
   }
   .note { font-size: 0.8rem; color: var(--muted); margin-top: -0.5rem; margin-bottom: 1.25rem; }
   input[readonly] { background: var(--bg); color: var(--muted); }
+  a.back {
+    display: inline-block; margin-bottom: 0.75rem; color: var(--accent);
+    text-decoration: none; font-size: 0.9rem;
+  }
+  a.back:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <a class="back" href="..">&larr; cryptomypto.ca</a>
   <h1>GOFAI Bridge</h1>
   <p class="lede">Enter site geometry, hydraulics, and a geotechnical profile. The solver enumerates every structurally valid abutment/bridge configuration for the site and reports them sorted by cost.</p>
 
