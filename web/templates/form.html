@@ -56,6 +56,7 @@
     border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.9rem;
   }
   .note { font-size: 0.8rem; color: var(--muted); margin-top: -0.5rem; margin-bottom: 1.25rem; }
+  input[readonly] { background: var(--bg); color: var(--muted); }
 </style>
 </head>
 <body>
@@ -102,7 +103,7 @@
 
     <div class="panel">
       <h2>Geotechnical Profile</h2>
-      <p class="note">Borehole log, top to bottom. Each row's elevation is the <strong>top</strong> of that layer &mdash; e.g. to log rock encountered at elevation 85 m, add a row with soil type "rock" and top elevation 85. A layer extends down to the next row's top elevation (or, for the last row, indefinitely). Top elevations must strictly decrease down the table, and the deepest row must be at or below the river bed / obstacle elevation.</p>
+      <p class="note">Borehole log, top to bottom. Each row's elevation is the <strong>top</strong> of that layer &mdash; e.g. to log rock encountered at elevation 85 m, add a row with soil type "rock" and top elevation 85. A layer extends down to the next row's top elevation (or, for the last row, indefinitely). The top row always starts at the approach elevation, since that's where the ground surface meets the abutment. Top elevations must strictly decrease down the table, and the deepest row must be at or below the river bed / obstacle elevation.</p>
       <table class="layers" id="layers-table">
         <thead>
           <tr><th>Soil type</th><th>Density</th><th>Top elevation (m)</th><th></th></tr>
@@ -123,11 +124,25 @@ const PREFILL = {{ prefill_layers | tojson }};
 
 const tbody = document.getElementById('layers-body');
 const addBtn = document.getElementById('add-layer');
+const approachInput = document.getElementById('approach_elevation');
 
 function updateAddButton() {
   addBtn.disabled = tbody.children.length >= MAX_LAYERS;
   addBtn.style.opacity = addBtn.disabled ? '0.5' : '1';
 }
+
+// The topmost layer is where the ground surface meets the abutment, so its
+// top elevation always equals the approach elevation -- kept in sync here
+// and enforced again server-side in case JS is off or the form is tampered.
+function syncFirstLayerElevation() {
+  const firstRow = tbody.firstElementChild;
+  if (!firstRow) return;
+  const elevInput = firstRow.querySelector('input[name="layer_elevation[]"]');
+  if (!elevInput) return;
+  elevInput.value = approachInput.value;
+  elevInput.readOnly = true;
+}
+approachInput.addEventListener('input', syncFirstLayerElevation);
 
 function addLayerRow(type, density, elevation) {
   if (tbody.children.length >= MAX_LAYERS) return;
@@ -177,12 +192,13 @@ function addLayerRow(type, density, elevation) {
   removeCell.className = 'remove-cell';
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button'; removeBtn.className = 'remove-row'; removeBtn.textContent = '✕';
-  removeBtn.addEventListener('click', () => { row.remove(); updateAddButton(); });
+  removeBtn.addEventListener('click', () => { row.remove(); updateAddButton(); syncFirstLayerElevation(); });
   removeCell.appendChild(removeBtn);
 
   row.append(typeCell, densityCell, elevCell, removeCell);
   tbody.appendChild(row);
   updateAddButton();
+  syncFirstLayerElevation();
 }
 
 addBtn.addEventListener('click', () => addLayerRow());

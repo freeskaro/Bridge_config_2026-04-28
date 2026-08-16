@@ -46,7 +46,6 @@ SOLVER_FILES = [
 # public form.
 SOIL_OPTIONS = {
     'gravel': ['loose', 'medium', 'dense'],
-    'clay': ['soft', 'stiff'],
     'rock': ['sound'],
 }
 
@@ -109,6 +108,12 @@ def parse_and_validate(form):
             )
         prev_elev = elev
         layers.append((t, d, elev))
+
+    if layers[0][2] != approach_elev:
+        raise ValidationError(
+            'The top soil layer must start at the approach elevation, since that is '
+            'where the ground surface meets the abutment.'
+        )
 
     if layers[-1][2] >= bottom_elev:
         raise ValidationError(

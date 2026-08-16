@@ -38,7 +38,7 @@ echo_all_facts :-
 % for pile elements: piles per row and row spacing.
 
 print_solution_summary(PropElem) :-
-    writeln('Elements:'),
+    format("~n  --- Elements ---~n"),
     maplist(print_elem_line, PropElem).
 
 % Pile element: elem(piles, RowCounts, Spacings, PileLength, none, none, none)
