@@ -11,7 +11,7 @@
 
 :- use_module(library(lists), [reverse/2]).
 :- consult('site_facts.pl').
-:- consult('abut_config_facts.pl').
+:- consult('Abut_config_facts.pl').
 :- consult('abut_pile_fallback.pl').
 :- consult('abut_print.pl').
 :- dynamic surface/1.

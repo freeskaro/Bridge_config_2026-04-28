@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GOFAI Bridge — Results</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --panel: #ffffff; --border: #d7dde3; --text: #1f2933;
+    --muted: #5b6b79; --accent: #1f5f8b; --accent-dark: #164a6e;
+    --error-bg: #fdecea; --error-border: #f2b8b5; --error-text: #8a2f26;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+  a.back {
+    display: inline-block; margin-bottom: 1.25rem; color: var(--accent);
+    text-decoration: none; font-size: 0.9rem;
+  }
+  a.back:hover { text-decoration: underline; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.25rem 1.5rem;
+  }
+  .status {
+    border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.9rem;
+  }
+  .status.ok { background: #eaf3ea; border: 1px solid #b9dbb9; color: #2c5c2c; }
+  .status.err { background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); }
+  pre {
+    white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem;
+    line-height: 1.45; margin: 0; font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Results</h1>
+  <a class="back" href=".">&larr; Back to configurator</a>
+  <div class="status {{ 'ok' if ok else 'err' }}">
+    {% if ok %}Solve completed.{% else %}The solver reported a problem — see details below.{% endif %}
+  </div>
+  <div class="panel"><pre>{{ report }}</pre></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GOFAI Bridge</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --panel: #ffffff; --border: #d7dde3; --text: #1f2933;
+    --muted: #5b6b79; --accent: #1f5f8b; --accent-dark: #164a6e;
+    --error-bg: #fdecea; --error-border: #f2b8b5; --error-text: #8a2f26;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+  p.lede { color: var(--muted); margin: 0 0 1.75rem; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;
+  }
+  .panel h2 { font-size: 1rem; margin: 0 0 1rem; color: var(--accent-dark); }
+  .field { margin-bottom: 0.9rem; }
+  .field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; }
+  .field .hint { display: block; font-weight: 400; color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+  input[type=number], select {
+    width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 0.95rem; background: #fff; color: var(--text);
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
+  table.layers { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
+  table.layers th { text-align: left; font-size: 0.78rem; color: var(--muted); padding: 0 0.4rem 0.4rem; font-weight: 600; }
+  table.layers td { padding: 0.25rem 0.4rem 0.5rem; vertical-align: top; }
+  table.layers td.remove-cell { width: 2.2rem; padding-top: 0.35rem; }
+  button.remove-row {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--muted); cursor: pointer; width: 2rem; height: 2.15rem; font-size: 1rem;
+  }
+  button.remove-row:hover { color: var(--error-text); border-color: var(--error-border); }
+  button#add-layer {
+    background: #fff; border: 1px dashed var(--border); border-radius: 6px;
+    color: var(--accent); padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.85rem;
+  }
+  button#add-layer:hover { border-color: var(--accent); }
+  button.submit {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 0.75rem 1.4rem; font-size: 1rem; cursor: pointer; width: 100%;
+  }
+  button.submit:hover { background: var(--accent-dark); }
+  .error-box {
+    background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text);
+    border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.9rem;
+  }
+  .note { font-size: 0.8rem; color: var(--muted); margin-top: -0.5rem; margin-bottom: 1.25rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GOFAI Bridge</h1>
+  <p class="lede">Enter site geometry, hydraulics, and a geotechnical profile. The solver enumerates every structurally valid abutment/bridge configuration for the site and reports them sorted by cost.</p>
+
+  {% if error %}
+  <div class="error-box"><strong>Please fix the following:</strong> {{ error }}</div>
+  {% endif %}
+
+  <form action="solve" method="post" id="config-form">
+    <div class="panel">
+      <h2>Site Geometry &amp; Hydraulics</h2>
+      <div class="grid2">
+        <div class="field">
+          <label for="approach_elevation">Approach elevation (m)
+            <span class="hint">Roadway elevation at the top of the abutment.</span>
+          </label>
+          <input type="number" step="any" name="approach_elevation" id="approach_elevation" required
+                 value="{{ form.approach_elevation if form else 100 }}">
+        </div>
+        <div class="field">
+          <label for="bottom_elevation">River bed / obstacle elevation (m)</label>
+          <input type="number" step="any" name="bottom_elevation" id="bottom_elevation" required
+                 value="{{ form.bottom_elevation if form else 93 }}">
+        </div>
+        <div class="field">
+          <label for="design_high_water_level">Design high water level (m)
+            <span class="hint">Used for freeboard: the abutment bears at least 0.3 m above this.</span>
+          </label>
+          <input type="number" step="any" name="design_high_water_level" id="design_high_water_level" required
+                 value="{{ form.design_high_water_level if form else 98 }}">
+        </div>
+        <div class="field">
+          <label for="hydraulic_opening">Hydraulic opening (m)
+            <span class="hint">Natural bank width.</span>
+          </label>
+          <input type="number" step="any" min="0" name="hydraulic_opening" id="hydraulic_opening" required
+                 value="{{ form.hydraulic_opening if form else 12 }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Geotechnical Profile</h2>
+      <p class="note">Borehole log, top to bottom. Each row's elevation is the <strong>top</strong> of that layer &mdash; e.g. to log rock encountered at elevation 85 m, add a row with soil type "rock" and top elevation 85. A layer extends down to the next row's top elevation (or, for the last row, indefinitely). Top elevations must strictly decrease down the table, and the deepest row must be at or below the river bed / obstacle elevation.</p>
+      <table class="layers" id="layers-table">
+        <thead>
+          <tr><th>Soil type</th><th>Density</th><th>Top elevation (m)</th><th></th></tr>
+        </thead>
+        <tbody id="layers-body"></tbody>
+      </table>
+      <button type="button" id="add-layer">+ Add layer</button>
+    </div>
+
+    <button type="submit" class="submit">Solve</button>
+  </form>
+</div>
+
+<script>
+const SOIL_OPTIONS = {{ soil_options | tojson }};
+const MAX_LAYERS = {{ max_layers }};
+const PREFILL = {{ prefill_layers | tojson }};
+
+const tbody = document.getElementById('layers-body');
+const addBtn = document.getElementById('add-layer');
+
+function updateAddButton() {
+  addBtn.disabled = tbody.children.length >= MAX_LAYERS;
+  addBtn.style.opacity = addBtn.disabled ? '0.5' : '1';
+}
+
+function addLayerRow(type, density, elevation) {
+  if (tbody.children.length >= MAX_LAYERS) return;
+  const row = document.createElement('tr');
+
+  const typeCell = document.createElement('td');
+  const typeSelect = document.createElement('select');
+  typeSelect.name = 'layer_type[]';
+  Object.keys(SOIL_OPTIONS).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    typeSelect.appendChild(opt);
+  });
+  typeCell.appendChild(typeSelect);
+
+  const densityCell = document.createElement('td');
+  const densitySelect = document.createElement('select');
+  densitySelect.name = 'layer_density[]';
+  densityCell.appendChild(densitySelect);
+
+  function refreshDensityOptions() {
+    const prevValue = densitySelect.value;
+    densitySelect.innerHTML = '';
+    (SOIL_OPTIONS[typeSelect.value] || []).forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      densitySelect.appendChild(opt);
+    });
+    if (density && [...densitySelect.options].some(o => o.value === density)) {
+      densitySelect.value = density;
+    } else if ([...densitySelect.options].some(o => o.value === prevValue)) {
+      densitySelect.value = prevValue;
+    }
+  }
+  typeSelect.addEventListener('change', refreshDensityOptions);
+  if (type) typeSelect.value = type;
+  refreshDensityOptions();
+
+  const elevCell = document.createElement('td');
+  const elevInput = document.createElement('input');
+  elevInput.type = 'number'; elevInput.step = 'any';
+  elevInput.name = 'layer_elevation[]'; elevInput.required = true;
+  if (elevation !== undefined && elevation !== null && elevation !== '') elevInput.value = elevation;
+  elevCell.appendChild(elevInput);
+
+  const removeCell = document.createElement('td');
+  removeCell.className = 'remove-cell';
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button'; removeBtn.className = 'remove-row'; removeBtn.textContent = '✕';
+  removeBtn.addEventListener('click', () => { row.remove(); updateAddButton(); });
+  removeCell.appendChild(removeBtn);
+
+  row.append(typeCell, densityCell, elevCell, removeCell);
+  tbody.appendChild(row);
+  updateAddButton();
+}
+
+addBtn.addEventListener('click', () => addLayerRow());
+
+if (PREFILL.length > 0) {
+  PREFILL.forEach(([t, d, e]) => addLayerRow(t, d, e));
+} else {
+  addLayerRow('gravel', 'dense', '');
+}
+</script>
+</body>
+</html>
