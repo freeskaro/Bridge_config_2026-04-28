@@ -20,7 +20,8 @@ SITE_FACTS_PATH = os.path.join(REPO_DIR, 'site_facts.pl')
 QUERY_TEMPLATE = os.path.join(WEB_DIR, 'query_template.pl')
 
 # Files consulted transitively by prolog_bridge_config.pl (see README's
-# "Consult chain"), excluding site_facts.pl which is generated per request.
+# "Consult chain"), excluding site_facts.pl and Live_load.pl, which are
+# both generated per request (see build_site_facts / build_live_load).
 SOLVER_FILES = [
     'prolog_bridge_config.pl',
     'abut_soil_config_8.pl',
@@ -32,9 +33,9 @@ SOLVER_FILES = [
     'CFEM_4th_prolog_qu.pl',
     'bridge_facts.pl',
     'dead_load.pl',
-    'Live_load.pl',
     'price_list.pl',
 ]
+LIVE_LOAD_PATH = os.path.join(REPO_DIR, 'Live_load.pl')
 
 # Soil (type, density) combinations offered in the form, restricted to
 # ones with friction_angle/3, elastic_modulus/3 AND soil_class_map/3
@@ -77,6 +78,8 @@ def parse_and_validate(form):
     bottom_elev = _to_float(form.get('bottom_elevation'), 'River bed / obstacle elevation')
     dhwl = _to_float(form.get('design_high_water_level'), 'Design high water level')
     hyd_opening = _to_float(form.get('hydraulic_opening'), 'Hydraulic opening', 0.1, 2000)
+    roadway_width = _to_float(form.get('roadway_width'), 'Bridge width', 0.1, 100)
+    frost_depth = _to_float(form.get('frost_depth'), 'Frost protection depth', 0, 10)
 
     if not (bottom_elev < approach_elev):
         raise ValidationError(
@@ -125,6 +128,8 @@ def parse_and_validate(form):
         'bottom_elevation': bottom_elev,
         'design_high_water_level': dhwl,
         'hydraulic_opening': hyd_opening,
+        'roadway_width': roadway_width,
+        'frost_depth': frost_depth,
         'layers': layers,
     }
 
@@ -134,7 +139,8 @@ def _fmt(x):
 
 
 _OVERRIDDEN_PREDICATES = [
-    'soil_log1', 'bottom', 'hydraulic_opening', 'design_high_water_level', 'approach_elevation',
+    'soil_log1', 'bottom', 'hydraulic_opening', 'design_high_water_level',
+    'approach_elevation', 'roadway_width', 'frost_depth',
 ]
 # Matches a full fact clause line for the predicate, including any trailing
 # same-line comment (site_facts.pl documents several of these facts with a
@@ -145,6 +151,7 @@ _OVERRIDDEN_PREDICATES = [
 # solver's search, even one duplicated fact multiplies the entire search
 # space rather than just adding one extra branch.
 _FACT_PATTERNS = [rf'^{pred}\(.*\)\.[^\n]*\n?' for pred in _OVERRIDDEN_PREDICATES]
+_DECK_WIDTH_PATTERN = r'^deck_width\(.*\)\.[^\n]*\n?'
 
 
 def build_site_facts(base_site_facts_text, data):
@@ -163,17 +170,35 @@ def build_site_facts(base_site_facts_text, data):
     lines.append(f"hydraulic_opening({_fmt(data['hydraulic_opening'])}).")
     lines.append(f"design_high_water_level({_fmt(data['design_high_water_level'])}).")
     lines.append(f"approach_elevation({_fmt(data['approach_elevation'])}).")
+    lines.append(f"roadway_width({_fmt(data['roadway_width'])}).")
+    lines.append(f"frost_depth({_fmt(data['frost_depth'])}).")
     lines.append('% --- end generated facts ---\n')
 
     return '\n'.join(lines) + '\n' + text
+
+
+def build_live_load(base_live_load_text, data):
+    """Live_load.pl declares its own deck_width/1 fact, independent of
+    site_facts.pl's roadway_width/1 -- the two must be kept in sync (see
+    the README's "Configuring for a New Site" checklist) or live-load
+    calculations silently use a stale deck width. Same strip-and-replace
+    approach as build_site_facts, for the same duplicate-clause reason."""
+    text = re.sub(_DECK_WIDTH_PATTERN, '', base_live_load_text, flags=re.MULTILINE)
+    prefix = (
+        '% --- generated per-request fact (web form submission) ---\n'
+        f"deck_width({_fmt(data['roadway_width'])}). % Wc, m -- kept in sync with roadway_width\n"
+        '% --- end generated fact ---\n\n'
+    )
+    return prefix + text
 
 
 def run_solver(data):
     """Build an isolated temp working directory for this request, run the
     solver in a fresh swipl subprocess, and return (ok, report_text)."""
     with open(SITE_FACTS_PATH) as f:
-        base_text = f.read()
-    site_facts_text = build_site_facts(base_text, data)
+        site_facts_text = build_site_facts(f.read(), data)
+    with open(LIVE_LOAD_PATH) as f:
+        live_load_text = build_live_load(f.read(), data)
 
     tmpdir = tempfile.mkdtemp(prefix='bridge_config_')
     try:
@@ -182,6 +207,8 @@ def run_solver(data):
         os.symlink(QUERY_TEMPLATE, os.path.join(tmpdir, 'query_template.pl'))
         with open(os.path.join(tmpdir, 'site_facts.pl'), 'w') as f:
             f.write(site_facts_text)
+        with open(os.path.join(tmpdir, 'Live_load.pl'), 'w') as f:
+            f.write(live_load_text)
 
         try:
             proc = subprocess.run(

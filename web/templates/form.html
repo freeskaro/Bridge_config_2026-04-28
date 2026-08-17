@@ -104,6 +104,20 @@
           <input type="number" step="any" min="0" name="hydraulic_opening" id="hydraulic_opening" required
                  value="{{ form.hydraulic_opening if form else 12 }}">
         </div>
+        <div class="field">
+          <label for="roadway_width">Bridge width (m)
+            <span class="hint">Deck / roadway width.</span>
+          </label>
+          <input type="number" step="any" min="0" name="roadway_width" id="roadway_width" required
+                 value="{{ form.roadway_width if form else 10 }}">
+        </div>
+        <div class="field">
+          <label for="frost_depth">Frost protection depth (m)
+            <span class="hint">Used for concrete gravity walls; other wall types use a fixed 0.4 m.</span>
+          </label>
+          <input type="number" step="any" min="0" name="frost_depth" id="frost_depth" required
+                 value="{{ form.frost_depth if form else 2 }}">
+        </div>
       </div>
     </div>
 

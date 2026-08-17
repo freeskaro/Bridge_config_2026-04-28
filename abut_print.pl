@@ -91,16 +91,11 @@ print_solution(Sol) :-
     price_solution(Sol, PricedItems, TotalCostRaw),
     TotalCost is round(TotalCostRaw),
     Piers = piers(NP, _, PH, _, _),
-    ( ScourLabel == '' ->
-        format("~n=== ~w-span | ~1f m | ~w ===~n",
-               [N, BridgeLength, GirderType])
-    ;
-        format("~n=== ~w-span | ~1f m | ~w | ~w ===~n",
-               [N, BridgeLength, GirderType, ScourLabel])
-    ),
+    format("~n=== ~w-span | ~1f m | ~w | ~w (~w) ===~n",
+           [N, BridgeLength, GirderType, AbutStyle, WallType]),
     format("  Abutment style: ~w (~w)~n", [AbutStyle, WallType]),
     ( ScourLabel \== '' ->
-        format("  Scour protection: ~w~n", [ScourLabel])
+        format("  ~w~n", [ScourLabel])
     ; true ),
     format("  Spans (m): ~w~n", [SpanLengths]),
     ( NP =:= 0 ->
@@ -108,11 +103,11 @@ print_solution(Sol) :-
     ;
         format("  Piers: ~w x pipe_pile_bent, height ~1f m~n", [NP, PH])
     ),
-    format("  --- Cost Breakdown ---~n"),
+    print_solution_summary(PropElem),
+    format("~n  --- Cost Breakdown ---~n"),
     print_priced_items(PricedItems, 0, _),
     format("  ~n"),
-    format("  TOTAL:  $~:d~n", [TotalCost]),
-    print_solution_summary(PropElem).
+    format("  TOTAL:  $~:d~n", [TotalCost]).
 
 print_all_solutions([]).
 print_all_solutions([S | Rest]) :-
